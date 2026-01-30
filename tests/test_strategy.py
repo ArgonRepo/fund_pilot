@@ -1,11 +1,18 @@
 """
 FundPilot-AI 策略逻辑单元测试
+更新：测试 250 日分位值策略和调整后的债券阈值
 """
 
 import pytest
 from strategy.indicators import QuantMetrics
 from strategy.etf_strategy import evaluate_etf_strategy, Decision, get_buy_multiplier
-from strategy.bond_strategy import evaluate_bond_strategy, detect_bond_signal
+from strategy.bond_strategy import (
+    evaluate_bond_strategy, 
+    detect_bond_signal,
+    BOND_DROP_THRESHOLD,
+    BOND_DROP_SEVERE,
+    MA_DEVIATION_THRESHOLD
+)
 
 
 class TestETFStrategy:
@@ -14,11 +21,11 @@ class TestETFStrategy:
     def _make_metrics(self, percentile: float, ma_deviation: float = 0, daily_change: float = 0) -> QuantMetrics:
         """创建测试用指标"""
         return QuantMetrics(
-            percentile_60=percentile,
+            percentile_250=percentile,
             ma_60=1.0,
             ma_deviation=ma_deviation,
-            max_60=1.2,
-            min_60=0.8,
+            max_250=1.2,
+            min_250=0.8,
             drawdown=0,
             daily_change=daily_change
         )
@@ -80,43 +87,76 @@ class TestBuyMultiplier:
         """合理 - 1倍"""
         assert get_buy_multiplier(50) == 1.0
     
+    def test_high(self):
+        """偏高 - 0.5倍（减半）"""
+        assert get_buy_multiplier(70) == 0.5
+    
     def test_overvalued(self):
         """高估 - 0倍（暂停）"""
         assert get_buy_multiplier(85) == 0.0
 
 
+class TestBondThresholds:
+    """债券阈值配置测试"""
+    
+    def test_drop_threshold(self):
+        """测试大跌阈值配置"""
+        assert BOND_DROP_THRESHOLD == -0.30  # 更新后的阈值
+    
+    def test_severe_threshold(self):
+        """测试严重大跌阈值"""
+        assert BOND_DROP_SEVERE == -0.50
+    
+    def test_ma_deviation_threshold(self):
+        """测试均线偏离阈值"""
+        assert MA_DEVIATION_THRESHOLD == -0.30
+
+
 class TestBondStrategy:
     """债券防守策略测试"""
     
-    def _make_metrics(self, ma_deviation: float = 0, daily_change: float = 0) -> QuantMetrics:
+    def _make_metrics(self, ma_deviation: float = 0, daily_change: float = 0, percentile: float = 50) -> QuantMetrics:
         """创建测试用指标"""
         return QuantMetrics(
-            percentile_60=50,
+            percentile_250=percentile,
             ma_60=1.0,
             ma_deviation=ma_deviation,
-            max_60=1.02,
-            min_60=0.98,
+            max_250=1.02,
+            min_250=0.98,
             drawdown=0,
             daily_change=daily_change
         )
     
     def test_normal_fluctuation(self):
         """测试正常波动 - 应该观望"""
-        metrics = self._make_metrics(ma_deviation=0.1, daily_change=0.05)
+        metrics = self._make_metrics(ma_deviation=0.1, daily_change=-0.05)  # -0.05% 不触发
         result = evaluate_bond_strategy(metrics)
         assert result.decision == Decision.HOLD
     
-    def test_below_ma(self):
-        """测试跌破均线 - 应该提示买入"""
+    def test_small_drop_no_trigger(self):
+        """测试小幅下跌不触发 - -0.15% 不应触发"""
+        metrics = self._make_metrics(ma_deviation=0.1, daily_change=-0.15)
+        result = evaluate_bond_strategy(metrics)
+        assert result.decision == Decision.HOLD  # 更新后 -0.15% 不触发
+    
+    def test_significant_drop(self):
+        """测试显著下跌 - -0.35% 应触发正常定投"""
+        metrics = self._make_metrics(ma_deviation=0.1, daily_change=-0.35)
+        result = evaluate_bond_strategy(metrics)
+        assert result.decision in [Decision.NORMAL_BUY, Decision.DOUBLE_BUY]
+    
+    def test_significant_ma_break(self):
+        """测试显著跌破均线 - 低于均线 0.5% 应触发"""
         metrics = self._make_metrics(ma_deviation=-0.5, daily_change=-0.1)
         result = evaluate_bond_strategy(metrics)
         assert result.decision in [Decision.NORMAL_BUY, Decision.DOUBLE_BUY]
     
-    def test_big_drop(self):
-        """测试单日大跌 - 应该提示买入"""
-        metrics = self._make_metrics(ma_deviation=0.1, daily_change=-0.2)
+    def test_overvalued_warning(self):
+        """测试高估区预警"""
+        metrics = self._make_metrics(ma_deviation=0.1, daily_change=-0.1, percentile=92)
         result = evaluate_bond_strategy(metrics)
-        assert result.decision in [Decision.NORMAL_BUY, Decision.DOUBLE_BUY]
+        assert result.decision == Decision.HOLD
+        assert "高" in result.reasoning or "高" in result.zone
 
 
 class TestBondSignal:
@@ -125,28 +165,42 @@ class TestBondSignal:
     def test_no_signal(self):
         """测试无信号"""
         metrics = QuantMetrics(
-            percentile_60=50,
+            percentile_250=50,
             ma_60=1.0,
             ma_deviation=0.1,
-            max_60=1.02,
-            min_60=0.98,
+            max_250=1.02,
+            min_250=0.98,
             drawdown=0,
-            daily_change=0.05
+            daily_change=-0.05  # 太小，不触发
         )
         signal = detect_bond_signal(metrics)
         assert signal.has_opportunity is False
     
     def test_ma_break_signal(self):
-        """测试跌破均线信号"""
+        """测试显著跌破均线信号"""
         metrics = QuantMetrics(
-            percentile_60=50,
+            percentile_250=50,
             ma_60=1.0,
-            ma_deviation=-0.5,
-            max_60=1.02,
-            min_60=0.98,
+            ma_deviation=-0.5,  # 显著低于均线
+            max_250=1.02,
+            min_250=0.98,
             drawdown=0,
             daily_change=-0.1
         )
         signal = detect_bond_signal(metrics)
         assert signal.has_opportunity is True
         assert "均线" in signal.signal_type
+    
+    def test_overvalued_flag(self):
+        """测试高估标记"""
+        metrics = QuantMetrics(
+            percentile_250=95,  # 高估区
+            ma_60=1.0,
+            ma_deviation=0.1,
+            max_250=1.02,
+            min_250=0.98,
+            drawdown=0,
+            daily_change=-0.1
+        )
+        signal = detect_bond_signal(metrics)
+        assert signal.is_overvalued is True

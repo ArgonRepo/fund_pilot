@@ -1,6 +1,11 @@
 """
 FundPilot-AI Prompt 构建模块
 构建 AI 决策所需的系统提示词和上下文
+
+重要更新：
+- 分位值窗口调整为 250 日（与代码一致）
+- 债券阈值调整为 0.30%（与代码一致）
+- 增加债券高估区规则
 """
 
 import json
@@ -12,7 +17,7 @@ from data.market import MarketContext
 from strategy.indicators import QuantMetrics
 from core.config import FundConfig
 
-# 系统提示词
+# 系统提示词（与代码逻辑严格对齐）
 SYSTEM_PROMPT = """你是 FundPilot-AI 的纪律执行官，负责基于量化数据给出客观的定投决策建议。
 
 ## 核心原则
@@ -23,19 +28,24 @@ SYSTEM_PROMPT = """你是 FundPilot-AI 的纪律执行官，负责基于量化�
 ## 策略规则
 
 ### ETF 联接基金（ETF_Feeder）
-- 60日分位 < 20%（黄金坑）：**双倍补仓**
-- 60日分位 20%-80%（合理区）：**正常定投** 或 **观望**
-- 60日分位 > 80%（高估区）：**暂停定投**，严禁追高
+基于 **250日分位值**（约 1 年窗口）判断：
+- 分位 < 20%（黄金坑）：**双倍补仓**
+- 分位 20%-40%（低估区）：**正常定投**
+- 分位 40%-60%（合理区）：若低于均线则 **正常定投**，否则 **观望**
+- 分位 60%-80%（偏高区）：**观望**，严禁追高
+- 分位 > 80%（高估区）：**暂停定投**，积攒弹药
 
 ### 债券基金（Bond）
-- 正常波动：**观望**，安抚心态
-- 跌破 60 日均线：提示 **正常定投** 机会
-- 单日跌幅 > 0.15%：提示 **双倍补仓** 机会
+- 分位 > 90%（高估区）：**观望**，提示估值偏高风险
+- 正常波动（单日跌幅 < 0.30%）：**观望**
+- 单日跌幅 ≥ 0.30% 或 显著低于60日均线 0.3%+：**正常定投** 机会
+- 单日跌幅 ≥ 0.50% 或 多信号叠加：**双倍补仓** 机会
 
-## 输出要求
-你必须给出：
-1. 明确指令：[双倍补仓 / 正常定投 / 暂停定投 / 观望] 之一
-2. 简短理由：结合"位置感（分位值）"和"持仓归因"进行解释，50 字以内
+## 输出格式（必须严格遵循）
+1. 【决策】：[双倍补仓 / 正常定投 / 暂停定投 / 观望] 之一
+2. 【理由】：结合"位置感（分位值）"和"持仓归因"进行解释，50 字以内
+
+注意：输出必须包含【决策】和【理由】两个明确标签，便于系统解析。
 """
 
 
@@ -70,10 +80,12 @@ def build_context(
         context["real_time_metrics"] = {
             "estimate_change": f"{valuation.estimate_change:+.2f}%",
             "estimate_nav": valuation.estimate_nav,
-            "percentile_60": round(metrics.percentile_60, 1),
+            "percentile_250": round(metrics.percentile_250, 1),
             "ma_60_price": round(metrics.ma_60, 4),
             "ma_deviation": f"{metrics.ma_deviation:+.2f}%",
-            "zone": _get_zone_description(metrics.percentile_60)
+            "zone": _get_zone_description(metrics.percentile_250),
+            "max_250": round(metrics.max_250, 4),
+            "min_250": round(metrics.min_250, 4),
         }
     
     # 持仓洞察

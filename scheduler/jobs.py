@@ -58,19 +58,19 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             logger.warning(f"基金 {fund.code} 获取估值失败")
             return FundResult(fund=fund, success=False, error="获取估值失败")
         
-        # 2. 获取历史净值
-        history = get_fund_history(fund.code, days=60)
+        # 2. 获取历史净值（260天，约1年，用于计算250日分位）
+        history = get_fund_history(fund.code, days=260)
         if not history:
             logger.warning(f"基金 {fund.code} 获取历史净值失败")
             return FundResult(fund=fund, success=False, error="获取历史净值失败")
         
         nav_stats = calculate_nav_stats(history)
         
-        # 3. 计算量化指标
-        prices_60d = [nav for _, nav in history]
+        # 3. 计算量化指标（使用250日分位值）
+        prices_history = [nav for _, nav in history]
         metrics = calculate_all_metrics(
             current_price=valuation.estimate_nav,
-            prices_60d=prices_60d,
+            prices_history=prices_history,
             daily_change=valuation.estimate_change
         )
         

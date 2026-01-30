@@ -1,6 +1,11 @@
 """
 FundPilot-AI 策略 B - 债券基金防守型策略
 基于回撤幅度和均线乖离进行决策
+
+重要更新：
+- 大跌阈值调整为 -0.3%（纯债）/-0.5%（混合债）
+- 均线偏离需显著才触发（低于均线 0.3% 以上）
+- 增加高估区预警
 """
 
 from dataclasses import dataclass
@@ -12,8 +17,15 @@ from core.logger import get_logger
 
 logger = get_logger("bond_strategy")
 
-# 债券大跌阈值（单日跌幅）
-BOND_DROP_THRESHOLD = -0.15  # -0.15%
+# 债券大跌阈值（单日跌幅）- 调整为更合理的值
+BOND_DROP_THRESHOLD = -0.30     # 纯债单日跌幅 > 0.30% 才算大跌
+BOND_DROP_SEVERE = -0.50        # 严重大跌阈值
+
+# 均线偏离显著性阈值
+MA_DEVIATION_THRESHOLD = -0.30  # 低于均线 0.3% 才算显著
+
+# 债券高估预警阈值
+BOND_OVERVALUED_PERCENTILE = 90  # 250日分位 > 90% 时提示风险
 
 
 @dataclass
@@ -22,15 +34,19 @@ class BondSignal:
     has_opportunity: bool     # 是否有买入机会
     signal_type: str          # 信号类型
     strength: float           # 信号强度 (0-1)
+    is_overvalued: bool = False  # 是否处于高估区
 
 
 def detect_bond_signal(metrics: QuantMetrics) -> BondSignal:
     """
     检测债券买入信号
     
-    信号条件：
-    1. 跌破 60 日均线
-    2. 单日跌幅 > 0.15%
+    信号条件（调整后）：
+    1. 显著跌破 60 日均线（低于 0.3%）
+    2. 单日跌幅 > 0.30%（债券大跌）
+    
+    预警条件：
+    - 250日分位 > 90%：高估预警
     
     Args:
         metrics: 量化指标
@@ -40,21 +56,29 @@ def detect_bond_signal(metrics: QuantMetrics) -> BondSignal:
     """
     signals = []
     
-    # 信号 1: 跌破 60 日均线
-    if metrics.ma_deviation < 0:
+    # 检查是否高估
+    is_overvalued = metrics.percentile_250 >= BOND_OVERVALUED_PERCENTILE
+    
+    # 信号 1: 显著跌破 60 日均线
+    if metrics.ma_deviation < MA_DEVIATION_THRESHOLD:
         strength = min(abs(metrics.ma_deviation) / 1.0, 1.0)  # 偏离 1% 满分
         signals.append(("跌破均线", strength))
     
-    # 信号 2: 单日大跌
+    # 信号 2: 单日大跌（需达到 -0.30%）
     if metrics.daily_change is not None and metrics.daily_change < BOND_DROP_THRESHOLD:
-        strength = min(abs(metrics.daily_change) / 0.5, 1.0)  # 跌 0.5% 满分
+        # 根据跌幅计算强度
+        if metrics.daily_change < BOND_DROP_SEVERE:
+            strength = 1.0  # 严重大跌
+        else:
+            strength = min(abs(metrics.daily_change) / 0.5, 1.0)
         signals.append(("单日大跌", strength))
     
     if not signals:
         return BondSignal(
             has_opportunity=False,
             signal_type="正常波动",
-            strength=0.0
+            strength=0.0,
+            is_overvalued=is_overvalued
         )
     
     # 取最强信号
@@ -72,7 +96,8 @@ def detect_bond_signal(metrics: QuantMetrics) -> BondSignal:
     return BondSignal(
         has_opportunity=True,
         signal_type=signal_type,
-        strength=total_strength
+        strength=total_strength,
+        is_overvalued=is_overvalued
     )
 
 
@@ -80,10 +105,12 @@ def evaluate_bond_strategy(metrics: QuantMetrics) -> StrategyResult:
     """
     评估债券基金策略
     
-    防守型策略逻辑：
-    - 正常波动：持有，安抚心态
-    - 跌破 60 日均线：提示买入机会
-    - 单日跌幅 > 0.15%：提示买入机会（债券大跌）
+    防守型策略逻辑（调整后）：
+    - 高估区（250日分位 > 90%）：观望，提示风险
+    - 正常波动：持有观望
+    - 显著跌破 60 日均线（低于 0.3%）：正常定投机会
+    - 单日跌幅 > 0.30%：正常定投机会
+    - 单日跌幅 > 0.50% 或 多信号叠加：双倍补仓机会
     
     Args:
         metrics: 量化指标
@@ -93,12 +120,33 @@ def evaluate_bond_strategy(metrics: QuantMetrics) -> StrategyResult:
     """
     signal = detect_bond_signal(metrics)
     
+    # 高估区：即使有信号也要谨慎
+    if signal.is_overvalued:
+        if signal.has_opportunity and signal.strength > 0.8:
+            # 高估区但有强烈信号，可以小额定投
+            decision = Decision.NORMAL_BUY
+            confidence = 0.5
+            reasoning = f"虽有{signal.signal_type}信号，但250日分位 {metrics.percentile_250:.0f}% 偏高，建议小额定投"
+        else:
+            decision = Decision.HOLD
+            confidence = 0.7
+            reasoning = f"250日分位 {metrics.percentile_250:.0f}% 处于高位，债券估值偏贵，建议观望"
+        zone = "高估区"
+        logger.info(f"债券策略决策: {decision.value} (高估预警)")
+        return StrategyResult(
+            decision=decision,
+            confidence=confidence,
+            reasoning=reasoning,
+            zone=zone
+        )
+    
+    # 正常估值区域
     if signal.has_opportunity:
         # 有买入机会
         if signal.strength > 0.7:
             decision = Decision.DOUBLE_BUY
             confidence = 0.8
-            reasoning = f"债券出现{signal.signal_type}信号，难得的加仓机会"
+            reasoning = f"债券出现{signal.signal_type}信号（强度 {signal.strength:.0%}），难得的加仓机会"
         else:
             decision = Decision.NORMAL_BUY
             confidence = 0.7

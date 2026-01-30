@@ -13,8 +13,8 @@ from core.database import get_database
 
 logger = get_logger("fund_history")
 
-# 默认获取天数
-DEFAULT_DAYS = 60
+# 默认获取天数（1年交易日 + 缓冲）
+DEFAULT_DAYS = 260
 
 
 def _fetch_from_akshare(fund_code: str, days: int = DEFAULT_DAYS) -> list[tuple[date, float, Optional[float]]]:
@@ -64,11 +64,11 @@ def get_fund_history(fund_code: str, days: int = DEFAULT_DAYS, force_refresh: bo
     
     Args:
         fund_code: 基金代码
-        days: 获取天数
+        days: 获取天数（默认 260 天，约 1 年）
         force_refresh: 是否强制刷新
     
     Returns:
-        [(日期, 净值), ...] 按日期降序
+        [(日期, 净值), ...] 按日期降序（最新在前）
     """
     db = get_database()
     
@@ -89,8 +89,8 @@ def get_fund_history(fund_code: str, days: int = DEFAULT_DAYS, force_refresh: bo
     if nav_list:
         # 保存到缓存
         db.save_nav_history_batch(fund_code, nav_list)
-        # 返回最近 N 天
-        return [(d, nav) for d, nav, _ in nav_list[-days:]][::-1]  # 降序
+        # 返回最近 N 天，降序排列
+        return [(d, nav) for d, nav, _ in nav_list[-days:]][::-1]
     
     # 如果获取失败，返回缓存数据
     return db.get_nav_history(fund_code, days)
@@ -105,9 +105,9 @@ def calculate_nav_stats(nav_history: list[tuple[date, float]]) -> dict:
     
     Returns:
         {
-            "max_60": 60日最高,
-            "min_60": 60日最低,
-            "avg_60": 60日均值 (MA60),
+            "max": 区间最高,
+            "min": 区间最低,
+            "avg": 区间均值,
             "latest_nav": 最新净值,
             "latest_date": 最新日期
         }
@@ -118,9 +118,9 @@ def calculate_nav_stats(nav_history: list[tuple[date, float]]) -> dict:
     navs = [nav for _, nav in nav_history]
     
     return {
-        "max_60": max(navs),
-        "min_60": min(navs),
-        "avg_60": sum(navs) / len(navs),
+        "max": max(navs),
+        "min": min(navs),
+        "avg": sum(navs) / len(navs),
         "latest_nav": navs[0],
         "latest_date": nav_history[0][0]
     }
