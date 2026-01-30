@@ -1,15 +1,13 @@
 """
-FundPilot-AI 市场环境数据模块
+FundPilot 市场环境数据模块
 获取大盘指数实时行情
 """
 
 from dataclasses import dataclass
 from typing import Optional
 
-import requests
-from tenacity import retry, stop_after_attempt, wait_exponential
-
 from core.logger import get_logger
+from data.http_client import get_text, request_stats
 
 logger = get_logger("market")
 
@@ -78,11 +76,6 @@ def _parse_index_quote(content: str, code: str) -> Optional[tuple[str, float, fl
     return None
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=5),
-    reraise=True
-)
 def fetch_market_indices() -> dict[str, MarketIndex]:
     """
     获取市场指数行情
@@ -94,13 +87,17 @@ def fetch_market_indices() -> dict[str, MarketIndex]:
     url = INDEX_QUOTE_API.format(index_codes=",".join(codes))
     
     try:
-        headers = {"Referer": "http://finance.sina.com.cn"}
-        response = requests.get(url, headers=headers, timeout=5)
-        response.encoding = "gbk"
+        # 使用统一客户端
+        text = get_text(url, source="sina", timeout=5, encoding="gbk")
+        
+        if not text:
+            request_stats.record_failure()
+            logger.warning("获取市场指数失败")
+            return {}
         
         results = {}
         for name, code in INDEX_CODES.items():
-            parsed = _parse_index_quote(response.text, code)
+            parsed = _parse_index_quote(text, code)
             if parsed:
                 idx_name, current, change = parsed
                 results[name] = MarketIndex(
@@ -110,9 +107,11 @@ def fetch_market_indices() -> dict[str, MarketIndex]:
                     change=change
                 )
         
+        request_stats.record_success()
         return results
         
     except Exception as e:
+        request_stats.record_failure()
         logger.error(f"获取市场指数失败: {e}")
         return {}
 

@@ -1,5 +1,5 @@
 """
-FundPilot-AI 实时估值获取模块
+FundPilot 实时估值获取模块
 从天天基金获取盘中实时估值
 """
 
@@ -9,18 +9,13 @@ from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional
 
-import requests
-from tenacity import retry, stop_after_attempt, wait_exponential
-
 from core.logger import get_logger
+from data.http_client import get_text, request_stats
 
 logger = get_logger("fund_valuation")
 
 # 天天基金估值 API
 FUND_GZ_API = "http://fundgz.1234567.com.cn/js/{fund_code}.js"
-
-# 请求超时（秒）
-REQUEST_TIMEOUT = 10
 
 # 数据失效阈值（分钟）
 STALE_THRESHOLD_MINUTES = 30
@@ -54,11 +49,6 @@ def _check_stale(estimate_time: datetime) -> bool:
     return diff_minutes > STALE_THRESHOLD_MINUTES
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    reraise=True
-)
 def fetch_fund_valuation(fund_code: str) -> Optional[FundValuation]:
     """
     获取基金实时估值
@@ -73,11 +63,17 @@ def fetch_fund_valuation(fund_code: str) -> Optional[FundValuation]:
     
     try:
         logger.info(f"获取基金 {fund_code} 实时估值...")
-        response = requests.get(url, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
+        
+        # 使用统一客户端（自带重试、UA轮换、延时）
+        text = get_text(url, source="tiantian", timeout=10)
+        
+        if not text:
+            request_stats.record_failure()
+            logger.warning(f"基金 {fund_code} 估值获取失败")
+            return None
         
         # 解析 JSONP
-        data = _parse_jsonp(response.text)
+        data = _parse_jsonp(text)
         
         # 解析估值时间
         # gztime 格式: "2024-01-15 14:30"
@@ -98,14 +94,17 @@ def fetch_fund_valuation(fund_code: str) -> Optional[FundValuation]:
             is_stale=is_stale
         )
         
+        request_stats.record_success()
         logger.info(f"基金 {fund_code} 估值: {valuation.estimate_change:+.2f}% (时间: {data['gztime']})")
         return valuation
         
-    except requests.RequestException as e:
-        logger.error(f"获取基金 {fund_code} 估值失败 (网络错误): {e}")
-        raise
     except (ValueError, KeyError, json.JSONDecodeError) as e:
+        request_stats.record_failure()
         logger.error(f"解析基金 {fund_code} 估值数据失败: {e}")
+        return None
+    except Exception as e:
+        request_stats.record_failure()
+        logger.error(f"获取基金 {fund_code} 估值失败: {e}")
         return None
 
 
@@ -121,9 +120,5 @@ def fetch_multiple_valuations(fund_codes: list[str]) -> dict[str, Optional[FundV
     """
     results = {}
     for code in fund_codes:
-        try:
-            results[code] = fetch_fund_valuation(code)
-        except Exception as e:
-            logger.error(f"获取基金 {code} 估值最终失败: {e}")
-            results[code] = None
+        results[code] = fetch_fund_valuation(code)
     return results

@@ -1,24 +1,27 @@
 """
-FundPilot-AI 持仓穿透分析模块
+FundPilot 持仓穿透分析模块
 获取基金重仓股信息及实时行情
 """
 
+import time
 from dataclasses import dataclass
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import akshare as ak
-import requests
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from core.logger import get_logger
 from core.database import get_database
-from core.config import get_config, FundConfig
+from core.config import FundConfig
+from data.http_client import get_text, request_stats
 
 logger = get_logger("holdings")
 
 # 股票行情 API（新浪）
 STOCK_QUOTE_API = "http://hq.sinajs.cn/list={stock_code}"
+
+# AkShare 请求间隔（秒）
+AKSHARE_REQUEST_INTERVAL = 1.0
 
 
 @dataclass
@@ -51,11 +54,6 @@ def _normalize_stock_code(code: str) -> str:
         return f"sz{code}"
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=1, max=5),
-    reraise=True
-)
 def _fetch_stock_quote(stock_code: str) -> Optional[float]:
     """
     获取股票实时涨跌幅
@@ -68,16 +66,18 @@ def _fetch_stock_quote(stock_code: str) -> Optional[float]:
     """
     try:
         url = STOCK_QUOTE_API.format(stock_code=stock_code)
-        headers = {"Referer": "http://finance.sina.com.cn"}
-        response = requests.get(url, headers=headers, timeout=5)
-        response.encoding = "gbk"
         
-        # 解析响应: var hq_str_sh600000="浦发银行,11.50,11.49,11.55,...";
-        content = response.text
-        if "=" not in content or '""' in content:
+        # 使用统一客户端（自带重试）
+        text = get_text(url, source="sina", timeout=5, encoding="gbk")
+        
+        if not text:
             return None
         
-        data = content.split('"')[1].split(",")
+        # 解析响应: var hq_str_sh600000="浦发银行,11.50,11.49,11.55,...";
+        if "=" not in text or '""' in text:
+            return None
+        
+        data = text.split('"')[1].split(",")
         if len(data) < 4:
             return None
         
@@ -113,14 +113,19 @@ def fetch_fund_holdings(fund_code: str, underlying_etf: Optional[str] = None) ->
         
         logger.info(f"获取基金 {target_code} 持仓信息...")
         
+        # AkShare 请求间隔
+        time.sleep(AKSHARE_REQUEST_INTERVAL)
+        
         # 尝试获取 ETF 持仓
         try:
             df = ak.fund_portfolio_hold_em(symbol=target_code, date="")
         except Exception:
             # 如果失败，尝试开放式基金持仓
+            time.sleep(AKSHARE_REQUEST_INTERVAL)
             df = ak.fund_portfolio_hold_em(symbol=fund_code, date="")
         
         if df is None or df.empty:
+            request_stats.record_failure()
             logger.warning(f"基金 {target_code} 未获取到持仓数据")
             return []
         
@@ -136,10 +141,12 @@ def fetch_fund_holdings(fund_code: str, underlying_etf: Optional[str] = None) ->
             if stock_code and stock_name:
                 result.append((stock_code, stock_name, weight))
         
+        request_stats.record_success()
         logger.info(f"基金 {target_code} 获取到 {len(result)} 只重仓股")
         return result
         
     except Exception as e:
+        request_stats.record_failure()
         logger.error(f"获取基金 {fund_code} 持仓失败: {e}")
         return []
 
@@ -168,11 +175,11 @@ def get_holdings_with_quotes(fund_config: FundConfig) -> Optional[HoldingsInsigh
     if not holdings_data:
         return None
     
-    # 并发获取股票行情
+    # 并发获取股票行情（限制并发数）
     holdings = []
     stock_codes = [(code, name, weight) for code, name, weight in holdings_data]
     
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:  # 降低并发数
         future_map = {}
         for code, name, weight in stock_codes:
             norm_code = _normalize_stock_code(code)

@@ -14,6 +14,7 @@ from data.fund_valuation import fetch_fund_valuation, FundValuation
 from data.fund_history import get_fund_history, calculate_nav_stats, get_recent_nav
 from data.holdings import get_holdings_with_quotes
 from data.market import get_market_context
+from data.http_client import request_stats  # 请求统计
 from strategy.indicators import calculate_all_metrics, QuantMetrics
 from strategy.etf_strategy import evaluate_etf_strategy
 from strategy.bond_strategy import evaluate_bond_strategy
@@ -222,6 +223,19 @@ def run_decision_task():
         logger.info(f"合并报告邮件发送成功: {len(reports)} 只基金")
     else:
         logger.error("合并报告邮件发送失败")
+    
+    # 检查数据获取失败率
+    failure_rate = request_stats.get_failure_rate()
+    if failure_rate > 50:
+        logger.warning(f"数据获取失败率过高: {failure_rate:.1f}%")
+        send_error_notification(
+            f"数据获取失败率过高: {failure_rate:.1f}%\n"
+            f"总请求: {request_stats.total}, 失败: {request_stats.failed}\n"
+            f"请检查网络或 API 状态。"
+        )
+    
+    # 重置统计
+    request_stats.reset()
     
     logger.info("="*50)
     logger.info("决策任务完成")
