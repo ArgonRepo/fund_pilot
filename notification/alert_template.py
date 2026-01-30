@@ -19,6 +19,7 @@ class AlertFundData:
     ma_deviation: float          # 均线偏离
     zone: str                    # 估值区间
     drawdown: float              # 60日回撤
+    holdings_txt: Optional[str] = None # 持仓概览 (前3大重仓+涨跌)
 
 
 @dataclass
@@ -305,6 +306,18 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
                 {metrics_rows}
             </table>
         </div>
+
+        <div class="data-section" style="padding-top: 0;">
+            <div class="section-title">持仓动态 (Top 3)</div>
+            <table class="data-table">
+                <tr>
+                    <th>代码</th>
+                    <th>基金</th>
+                    <th>重仓股表现</th>
+                </tr>
+                {holdings_rows}
+            </table>
+        </div>
         
         <div class="glossary-section">
             <div class="glossary-title">📌 指标说明</div>
@@ -347,6 +360,13 @@ METRICS_ROW_TEMPLATE = """<tr>
     <td class="fund-name-cell">{fund_name_short}</td>
     <td class="text-right" style="color: {deviation_color};">{ma_deviation}</td>
     <td class="text-right">{drawdown}</td>
+</tr>"""
+
+
+HOLDINGS_ROW_TEMPLATE = """<tr>
+    <td style="color: #888; font-size: 12px;">{fund_code}</td>
+    <td class="fund-name-cell">{fund_name_short}</td>
+    <td style="font-size: 12px; color: #666; line-height: 1.4;">{holdings_txt}</td>
 </tr>"""
 
 
@@ -409,6 +429,8 @@ def generate_alert_email_html(
     
     # 量化指标行
     metrics_rows = []
+    holdings_rows = []
+    
     for fund in funds:
         name = fund.fund_name
         if len(name) > 8:
@@ -421,6 +443,14 @@ def generate_alert_email_html(
             deviation_color=_get_change_color(fund.ma_deviation),
             drawdown=f"{fund.drawdown:.2f}%"
         ))
+        
+        # 仅当有持仓信息时显示
+        if fund.holdings_txt:
+            holdings_rows.append(HOLDINGS_ROW_TEMPLATE.format(
+                fund_code=fund.fund_code,
+                fund_name_short=name,
+                holdings_txt=fund.holdings_txt
+            ))
     
     return ALERT_EMAIL_TEMPLATE.format(
         date_str=date_str,
@@ -432,7 +462,8 @@ def generate_alert_email_html(
         hs300_change=hs300_change,
         hs300_color=hs300_color,
         fund_rows="\n".join(fund_rows),
-        metrics_rows="\n".join(metrics_rows)
+        metrics_rows="\n".join(metrics_rows),
+        holdings_rows="\n".join(holdings_rows)
     )
 
 

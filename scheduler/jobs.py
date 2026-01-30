@@ -302,6 +302,22 @@ def run_alert_task():
             from strategy.indicators import get_percentile_zone
             zone = get_percentile_zone(metrics.percentile_250)
             
+            # 获取持仓信息 (用于穿透分析)
+            holdings = get_holdings_with_quotes(fund)
+            holdings_txt = None
+            if holdings and holdings.holdings:
+                # 取波动最大的前3只重仓股
+                valid_holdings = [h for h in holdings.holdings if h.change is not None]
+                if valid_holdings:
+                    sorted_h = sorted(valid_holdings, key=lambda x: abs(x.change), reverse=True)
+                    top3 = sorted_h[:3]
+                    parts = []
+                    for h in top3:
+                        # 红色涨，绿色跌
+                        color = "#D32F2F" if h.change > 0 else "#388E3C"
+                        parts.append(f"{h.stock_name} <span style='color:{color}'>{h.change:+.1f}%</span>")
+                    holdings_txt = "&nbsp; ".join(parts)
+            
             fund_data = AlertFundData(
                 fund_name=fund.name,
                 fund_code=fund.code,
@@ -310,7 +326,8 @@ def run_alert_task():
                 percentile_250=metrics.percentile_250,
                 ma_deviation=metrics.ma_deviation,
                 zone=zone,
-                drawdown=metrics.drawdown or 0
+                drawdown=metrics.drawdown or 0,
+                holdings_txt=holdings_txt
             )
             fund_data_list.append(fund_data)
             
