@@ -473,12 +473,13 @@ def generate_combined_email_subject(
     time_str: str
 ) -> str:
     """
-    生成邮件标题 - 简洁专业
+    生成邮件标题 - 遵照用户指定格式
     
-    格式: 定投决策 | 1月30日 | 2补仓 1观望
+    格式: [Fund Pilot] 投资决策 (26.01.30) - 1补仓/1观望
     """
     today = datetime.now()
-    date_str = f"{today.month}.{today.day}"
+    # 格式化日期为 YY.MM.DD
+    date_str = today.strftime("%y.%m.%d")
     
     # 统计决策
     decision_counts = {}
@@ -491,16 +492,16 @@ def generate_combined_email_subject(
         }.get(r.decision, r.decision)
         decision_counts[short_name] = decision_counts.get(short_name, 0) + 1
     
-    # 生成决策摘要（按优先级排序）
+    # 生成决策摘要
     priority = ["补仓", "定投", "暂停", "观望"]
     summary_parts = []
     for d in priority:
         if d in decision_counts:
             summary_parts.append(f"{decision_counts[d]}{d}")
     
-    summary = " ".join(summary_parts[:3])  # 最多显示3个
+    summary = "/".join(summary_parts)
     
-    return f"定投决策 | {date_str} | {summary}"
+    return f"[Fund Pilot] 投资决策 ({date_str}) - {summary}"
 
 
 # ============================================================
@@ -547,4 +548,5 @@ def generate_email_subject(
 ) -> str:
     """生成邮件标题（兼容旧接口）"""
     today = datetime.now()
-    return f"定投决策 | {today.month}.{today.day} | {decision}"
+    date_str = today.strftime("%y.%m.%d")
+    return f"[Fund Pilot] 投资决策 ({date_str}) - {decision}"
