@@ -297,16 +297,16 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
     <div class="email-container">
-        <div class="header">
-            <div class="header-title">定投决策报告</div>
-            <div class="header-meta">{date_str} · {fund_count} 只基金</div>
-        </div>
-        
         <div class="summary-section">
-            <div class="summary-title">今日决策</div>
-            <div class="decision-card">
+            <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border-radius: 8px; overflow: hidden;">
+                <tr style="background: #f8f9fa;">
+                    <th style="text-align: left; padding: 10px 12px; font-weight: 500; color: #888; border-bottom: 2px solid #eee; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">代码</th>
+                    <th style="text-align: left; padding: 10px 12px; font-weight: 500; color: #888; border-bottom: 2px solid #eee; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">基金</th>
+                    <th style="text-align: center; padding: 10px 12px; font-weight: 500; color: #888; border-bottom: 2px solid #eee; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">250日分位</th>
+                    <th style="text-align: right; padding: 10px 12px; font-weight: 500; color: #888; border-bottom: 2px solid #eee; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">今日决策</th>
+                </tr>
                 {summary_rows}
-            </div>
+            </table>
         </div>
         
         <div class="detail-section">
@@ -322,18 +322,19 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
 </html>"""
 
 
-SUMMARY_ROW_TEMPLATE = """<div class="decision-row">
-    <div class="decision-cell fund-info">
-        <div class="fund-name-short">{fund_name}</div>
-        <div class="fund-change" style="color: {change_color};">{estimate_change}</div>
-    </div>
-    <div class="decision-cell percentile-info">
-        <span class="percentile-value">{percentile}</span>
-    </div>
-    <div class="decision-cell decision-info">
-        <span class="decision-tag" style="background: {decision_bg}; color: {decision_color};">{decision}</span>
-    </div>
-</div>"""
+SUMMARY_ROW_TEMPLATE = """<tr>
+    <td style="padding: 12px; border-bottom: 1px solid #f0f0f0; color: #888; font-size: 12px;">{fund_code}</td>
+    <td style="padding: 12px; border-bottom: 1px solid #f0f0f0;">
+        <div style="font-size: 14px; font-weight: 500; color: #1a1a1a;">{fund_name}</div>
+        <div style="font-size: 12px; margin-top: 2px; color: {change_color};">{estimate_change}</div>
+    </td>
+    <td style="padding: 12px; border-bottom: 1px solid #f0f0f0; text-align: center;">
+        <span style="font-weight: 600; color: #333;">{percentile}</span>
+    </td>
+    <td style="padding: 12px; border-bottom: 1px solid #f0f0f0; text-align: right;">
+        <span style="display: inline-block; padding: 6px 14px; border-radius: 4px; font-size: 13px; font-weight: 500; background: {decision_bg}; color: {decision_color};">{decision}</span>
+    </td>
+</tr>"""
 
 
 FUND_SECTION_TEMPLATE = """<div class="fund-detail">
@@ -356,11 +357,11 @@ FUND_SECTION_TEMPLATE = """<div class="fund-detail">
                 <div class="metric-value" style="color: {change_color};">{estimate_change}</div>
             </div>
             <div class="metric-item">
-                <div class="metric-label">年度分位</div>
+                <div class="metric-label">250日分位</div>
                 <div class="metric-value">{percentile}</div>
             </div>
             <div class="metric-item">
-                <div class="metric-label">均线偏离</div>
+                <div class="metric-label">60日均线偏离</div>
                 <div class="metric-value" style="color: {deviation_color};">{ma_deviation}</div>
             </div>
             <div class="metric-item">
@@ -414,6 +415,7 @@ def generate_combined_email_html(
             name = name[:11] + "…"
         
         summary_rows.append(SUMMARY_ROW_TEMPLATE.format(
+            fund_code=report.fund_code,
             fund_name=name,
             estimate_change=_format_change(report.estimate_change),
             change_color=_get_change_color(report.estimate_change),
