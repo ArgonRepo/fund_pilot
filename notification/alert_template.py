@@ -227,26 +227,38 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
         
         /* 指标说明 */
         .glossary-section {{
-            padding: 20px 24px;
+            padding: 24px;
             background: #fff;
-            border-top: 1px solid #f5f5f5;
+            border-top: 1px solid #f0f0f0;
         }}
         .glossary-title {{
             font-size: 12px;
-            font-weight: 500;
-            color: #666;
+            font-weight: 600;
+            color: #444;
             margin-bottom: 12px;
+            letter-spacing: 0.5px;
         }}
-        .glossary-item {{
-            margin-bottom: 8px;
+        .glossary-table {{
+            width: 100%;
+            border-collapse: collapse;
             font-size: 11px;
-            color: #888;
-            line-height: 1.5;
-        }}
-        .glossary-term {{
-            font-weight: 500;
             color: #666;
-            margin-right: 4px;
+            line-height: 1.6;
+        }}
+        .glossary-table td {{
+            padding: 8px 0;
+            border-bottom: 1px dashed #eee;
+            vertical-align: top;
+        }}
+        .glossary-table tr:last-child td {{
+            border-bottom: none;
+        }}
+        .term-cell {{
+            width: 90px;
+            font-weight: 600;
+            color: #555;
+            padding-right: 12px;
+            white-space: nowrap;
         }}
     </style>
 </head>
@@ -296,18 +308,20 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
         
         <div class="glossary-section">
             <div class="glossary-title">📌 指标说明</div>
-            <div class="glossary-item">
-                <span class="glossary-term">250日分位:</span>
-                当前净值在过去250个交易日（约一年）中的相对位置。0%代表最低，100%代表最高，用于判断当前价格在这个周期内是便宜还是昂贵。
-            </div>
-            <div class="glossary-item">
-                <span class="glossary-term">60日均线偏离:</span>
-                当前净值相对于过去60日平均净值的偏离程度。正值表示高于均线（强势），负值表示低于均线（弱势）。
-            </div>
-            <div class="glossary-item">
-                <span class="glossary-term">60日最大回撤:</span>
-                过去60个交易日内，从最高点回落的最大幅度，反映近期可能面临的最大跌幅风险。
-            </div>
+            <table class="glossary-table">
+                <tr>
+                    <td class="term-cell">250日分位</td>
+                    <td>当前净值在过去250个交易日（约一年）中的相对位置。0%代表最低，100%代表最高，用于判断当前价格在年内是便宜还是昂贵。</td>
+                </tr>
+                <tr>
+                    <td class="term-cell">60日均线偏离</td>
+                    <td>当前净值相对于过去60日平均净值的偏离程度。正值表示高于均线（趋势向好），负值表示低于均线（趋势走弱）。</td>
+                </tr>
+                <tr>
+                    <td class="term-cell">60日最大回撤</td>
+                    <td>过去60个交易日内，从最高点回落的最大幅度，反映近期可能面临的短期波动风险。</td>
+                </tr>
+            </table>
         </div>
         
         <div class="footer">

@@ -75,10 +75,8 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             daily_change=valuation.estimate_change
         )
         
-        # 4. 获取持仓信息（仅 ETF 联接基金）
-        holdings = None
-        if fund.type == "ETF_Feeder":
-            holdings = get_holdings_with_quotes(fund)
+        # 4. 获取持仓信息 (尝试获取所有基金的重仓股，如债券基、混合基)
+        holdings = get_holdings_with_quotes(fund)
         
         # 5. 获取市场环境
         market = get_market_context()
