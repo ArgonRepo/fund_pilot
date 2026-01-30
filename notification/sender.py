@@ -193,3 +193,19 @@ def send_error_notification(error_message: str) -> bool:
         "【FundPilot】系统异常通知",
         f"FundPilot-AI 运行出现异常：\n\n{error_message}\n\n请检查系统日志。"
     )
+
+
+def send_alert_email(subject: str, html_content: str) -> bool:
+    """
+    发送盘中预警邮件（无附件）
+    
+    Args:
+        subject: 邮件标题
+        html_content: HTML 内容
+    
+    Returns:
+        是否成功
+    """
+    sender = get_email_sender()
+    return sender.send_with_images(subject, html_content, None)
+

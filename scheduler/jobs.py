@@ -228,26 +228,100 @@ def run_decision_task():
     logger.info("="*50)
 
 
+
 def run_alert_task():
     """
-    运行预警任务（14:30 简单提醒）
+    运行盘中预警任务（12:30 上午数据快照）
+    发送包含市场概况和基金数据的预警邮件
     """
     logger.info("="*50)
-    logger.info("FundPilot-AI 预警任务启动")
+    logger.info("FundPilot 盘中预警任务启动")
     logger.info("="*50)
     
     if not should_run_task():
         return
     
     config = get_config()
+    time_str = datetime.now().strftime("%H:%M")
     
-    # 简单获取估值并记录
+    # 导入预警模板
+    from notification.alert_template import (
+        AlertFundData, MarketData,
+        generate_alert_email_html, generate_alert_email_subject
+    )
+    from notification.sender import send_alert_email
+    
+    # 1. 获取市场数据
+    market_ctx = get_market_context()
+    market_data = None
+    if market_ctx:
+        market_data = MarketData(
+            shanghai_price=market_ctx.shanghai_index.current if market_ctx.shanghai_index else 0,
+            shanghai_change=market_ctx.shanghai_index.change if market_ctx.shanghai_index else 0,
+            hs300_price=market_ctx.hs300_index.current if market_ctx.hs300_index else 0,
+            hs300_change=market_ctx.hs300_index.change if market_ctx.hs300_index else 0
+        )
+    
+    # 2. 获取各基金数据
+    fund_data_list: list[AlertFundData] = []
+    
     for fund in config.funds:
         try:
+            # 获取实时估值
             valuation = fetch_fund_valuation(fund.code)
-            if valuation:
-                logger.info(f"预警: {fund.name} 预估 {valuation.estimate_change:+.2f}%")
+            if not valuation:
+                logger.warning(f"预警: {fund.name} 估值获取失败")
+                continue
+            
+            # 获取历史数据计算指标
+            history = get_fund_history(fund.code, days=260)
+            if not history:
+                logger.warning(f"预警: {fund.name} 历史数据获取失败")
+                continue
+            
+            prices_history = [nav for _, nav in history]
+            metrics = calculate_all_metrics(
+                current_price=valuation.estimate_nav,
+                prices_history=prices_history,
+                daily_change=valuation.estimate_change
+            )
+            
+            # 确定估值区间
+            from strategy.indicators import get_percentile_zone
+            zone = get_percentile_zone(metrics.percentile_250)
+            
+            fund_data = AlertFundData(
+                fund_name=fund.name,
+                fund_code=fund.code,
+                fund_type=fund.type,
+                estimate_change=valuation.estimate_change,
+                percentile_250=metrics.percentile_250,
+                ma_deviation=metrics.ma_deviation,
+                zone=zone,
+                drawdown=metrics.drawdown or 0
+            )
+            fund_data_list.append(fund_data)
+            
+            logger.info(f"预警: {fund.name} {valuation.estimate_change:+.2f}% 分位:{metrics.percentile_250:.0f}%")
+            
         except Exception as e:
             logger.warning(f"预警获取 {fund.name} 失败: {e}")
     
+    if not fund_data_list:
+        logger.error("预警: 所有基金数据获取失败")
+        return
+    
+    # 3. 生成并发送邮件
+    subject = generate_alert_email_subject()
+    html_content = generate_alert_email_html(fund_data_list, market_data, time_str)
+    
+    success = send_alert_email(subject, html_content)
+    
+    if success:
+        logger.info(f"盘中预警邮件发送成功: {len(fund_data_list)} 只基金")
+    else:
+        logger.error("盘中预警邮件发送失败")
+    
+    logger.info("="*50)
     logger.info("预警任务完成")
+    logger.info("="*50)
