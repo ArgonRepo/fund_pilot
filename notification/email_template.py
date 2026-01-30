@@ -1,11 +1,11 @@
 """
-FundPilot-AI HTML 邮件模板模块
-生成美观的 HTML 邮件内容（合并报告版）
+FundPilot 邮件模板模块
+专业、简洁的投资决策报告
 """
 
 from dataclasses import dataclass
 from typing import Optional
-from ai.decision_parser import get_decision_emoji, get_decision_color
+from datetime import datetime
 
 
 @dataclass
@@ -17,333 +17,454 @@ class FundReport:
     decision: str
     reasoning: str
     estimate_change: float
-    percentile_60: float
+    percentile_60: float  # 命名保留兼容，实际是 250 日分位
     ma_deviation: float
     zone: str
     holdings_summary: Optional[str] = None
     top_gainers: Optional[list[str]] = None
     top_losers: Optional[list[str]] = None
-    chart_cid: Optional[str] = None  # 图表 CID
+    chart_cid: Optional[str] = None
 
 
-# 合并邮件模板
-COMBINED_EMAIL_TEMPLATE = """
-<!DOCTYPE html>
+# 决策颜色配置（专业克制）
+DECISION_COLORS = {
+    "双倍补仓": "#D32F2F",   # 深红（强调行动）
+    "正常定投": "#388E3C",   # 深绿（积极）
+    "暂停定投": "#F57C00",   # 橙色（警告）
+    "观望": "#757575"        # 灰色（中性）
+}
+
+DECISION_BG_COLORS = {
+    "双倍补仓": "#FFEBEE",
+    "正常定投": "#E8F5E9",
+    "暂停定投": "#FFF3E0",
+    "观望": "#F5F5F5"
+}
+
+
+def _get_decision_color(decision: str) -> str:
+    return DECISION_COLORS.get(decision, "#757575")
+
+
+def _get_decision_bg(decision: str) -> str:
+    return DECISION_BG_COLORS.get(decision, "#F5F5F5")
+
+
+def _get_fund_type_label(fund_type: str) -> str:
+    return {"Bond": "债券型", "ETF_Feeder": "ETF联接"}.get(fund_type, fund_type)
+
+
+def _format_change(change: float) -> str:
+    """格式化涨跌幅"""
+    return f"{change:+.2f}%"
+
+
+def _get_change_color(change: float) -> str:
+    """涨跌颜色"""
+    if change > 0:
+        return "#D32F2F"  # 红涨
+    elif change < 0:
+        return "#388E3C"  # 绿跌
+    return "#333333"
+
+
+# ============================================================
+# 主邮件模板 - 简洁专业风格
+# ============================================================
+
+COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: #f5f6fa;
-            margin: 0;
-            padding: 20px;
-        }}
-        .container {{
-            max-width: 700px;
-            margin: 0 auto;
-            background-color: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }}
-        .header {{
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 25px;
-            text-align: center;
-        }}
-        .header h1 {{
-            margin: 0;
-            font-size: 22px;
-            font-weight: 600;
-        }}
-        .header .subtitle {{
-            margin-top: 8px;
-            font-size: 14px;
-            opacity: 0.9;
-        }}
-        .summary-table {{
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-        }}
-        .summary-table th {{
+            font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
             background-color: #f8f9fa;
-            padding: 12px 8px;
-            text-align: left;
+            color: #333;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }}
+        .email-container {{
+            max-width: 640px;
+            margin: 0 auto;
+            background: #fff;
+        }}
+        
+        /* 头部 - 简洁大方 */
+        .header {{
+            padding: 32px 24px 24px;
+            border-bottom: 1px solid #eee;
+        }}
+        .header-title {{
+            font-size: 20px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+        }}
+        .header-meta {{
+            font-size: 13px;
+            color: #888;
+        }}
+        
+        /* 决策摘要卡片 - 最重要 */
+        .summary-section {{
+            padding: 24px;
+            background: #fafafa;
+        }}
+        .summary-title {{
+            font-size: 12px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+        }}
+        .decision-card {{
+            display: table;
+            width: 100%;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 8px;
+            border: 1px solid #eee;
+        }}
+        .decision-row {{
+            display: table-row;
+        }}
+        .decision-cell {{
+            display: table-cell;
+            padding: 14px 16px;
+            vertical-align: middle;
+            border-bottom: 1px solid #f0f0f0;
+        }}
+        .decision-card .decision-row:last-child .decision-cell {{
+            border-bottom: none;
+        }}
+        .fund-info {{
+            width: 45%;
+        }}
+        .fund-name-short {{
+            font-size: 14px;
+            font-weight: 500;
+            color: #1a1a1a;
+        }}
+        .fund-change {{
+            font-size: 12px;
+            margin-top: 2px;
+        }}
+        .decision-info {{
+            width: 35%;
+            text-align: right;
+        }}
+        .decision-tag {{
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+        }}
+        .percentile-info {{
+            width: 20%;
+            text-align: center;
+            font-size: 13px;
+            color: #666;
+        }}
+        .percentile-value {{
             font-weight: 600;
             color: #333;
-            border-bottom: 2px solid #dee2e6;
-            font-size: 13px;
         }}
-        .summary-table td {{
-            padding: 12px 8px;
-            border-bottom: 1px solid #dee2e6;
-            font-size: 13px;
+        
+        /* 详细分析区 */
+        .detail-section {{
+            padding: 24px;
         }}
-        .fund-section {{
-            margin: 15px 20px;
-            padding: 15px;
-            border-radius: 8px;
-            background-color: #fafafa;
-            border-left: 4px solid #667eea;
+        .fund-detail {{
+            margin-bottom: 24px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #eee;
         }}
-        .fund-header {{
+        .fund-detail:last-child {{
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }}
+        .detail-header {{
             display: flex;
             justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
+            align-items: flex-start;
+            margin-bottom: 12px;
         }}
-        .fund-name {{
-            font-size: 16px;
+        .detail-fund-name {{
+            font-size: 15px;
             font-weight: 600;
-            color: #333;
+            color: #1a1a1a;
         }}
-        .fund-type {{
-            font-size: 12px;
-            color: #666;
-            background-color: #e9ecef;
-            padding: 2px 8px;
+        .detail-fund-type {{
+            font-size: 11px;
+            color: #888;
+            margin-top: 2px;
+        }}
+        .detail-decision {{
+            padding: 5px 12px;
             border-radius: 4px;
-        }}
-        .decision-badge {{
-            display: inline-block;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-weight: 600;
-            font-size: 14px;
-            color: white;
-        }}
-        .decision-double {{ background-color: #e74c3c; }}
-        .decision-normal {{ background-color: #27ae60; }}
-        .decision-stop {{ background-color: #f39c12; }}
-        .decision-hold {{ background-color: #3498db; }}
-        .fund-reason {{
-            font-size: 13px;
-            color: #555;
-            margin-top: 8px;
-            line-height: 1.5;
-        }}
-        .fund-metrics {{
-            display: flex;
-            gap: 15px;
-            margin-top: 10px;
-            flex-wrap: wrap;
-        }}
-        .metric {{
             font-size: 12px;
-            color: #666;
+            font-weight: 500;
+        }}
+        
+        /* 分析理由 */
+        .analysis-box {{
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 14px 16px;
+            margin-bottom: 14px;
+        }}
+        .analysis-text {{
+            font-size: 13px;
+            color: #444;
+            line-height: 1.7;
+        }}
+        
+        /* 指标网格 */
+        .metrics-grid {{
+            display: table;
+            width: 100%;
+            margin-bottom: 14px;
+        }}
+        .metrics-row {{
+            display: table-row;
+        }}
+        .metric-item {{
+            display: table-cell;
+            width: 25%;
+            text-align: center;
+            padding: 10px 0;
+        }}
+        .metric-label {{
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 4px;
         }}
         .metric-value {{
+            font-size: 14px;
             font-weight: 600;
-            color: #333;
+            color: #1a1a1a;
         }}
-        .positive {{ color: #e74c3c; }}
-        .negative {{ color: #27ae60; }}
-        .chart-container {{
-            padding: 10px 20px;
-            text-align: center;
-        }}
-        .chart-container img {{
-            max-width: 100%;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            margin-bottom: 15px;
-        }}
-        .holdings-info {{
+        
+        /* 持仓信息 */
+        .holdings-box {{
+            background: #fff;
+            border: 1px solid #eee;
+            border-radius: 6px;
+            padding: 12px 14px;
             font-size: 12px;
             color: #666;
-            margin-top: 8px;
-            padding: 8px;
-            background-color: #f0f0f0;
-            border-radius: 4px;
+            margin-bottom: 14px;
         }}
-        .footer {{
-            background-color: #f8f9fa;
-            padding: 15px;
+        .holdings-title {{
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 6px;
+        }}
+        
+        /* 图表区 */
+        .chart-box {{
             text-align: center;
-            font-size: 12px;
+        }}
+        .chart-box img {{
+            max-width: 100%;
+            border-radius: 6px;
+            border: 1px solid #eee;
+        }}
+        
+        /* 页脚 */
+        .footer {{
+            padding: 20px 24px;
+            background: #fafafa;
+            border-top: 1px solid #eee;
+            text-align: center;
+        }}
+        .footer-text {{
+            font-size: 11px;
             color: #999;
         }}
-        .market-summary {{
-            padding: 15px 20px;
-            background-color: #f8f9fa;
-            margin: 0 20px 20px 20px;
-            border-radius: 8px;
-            font-size: 13px;
-            color: #555;
+        .footer-disclaimer {{
+            font-size: 10px;
+            color: #bbb;
+            margin-top: 8px;
         }}
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="email-container">
         <div class="header">
-            <h1>📊 FundPilot-AI 决策报告</h1>
-            <div class="subtitle">{time} | 共 {fund_count} 只基金</div>
+            <div class="header-title">定投决策报告</div>
+            <div class="header-meta">{date_str} · {fund_count} 只基金</div>
         </div>
         
-        <div class="market-summary">
-            🌍 <strong>市场概况</strong>：{market_summary}
-        </div>
-        
-        <div style="padding: 0 20px;">
-            <table class="summary-table">
-                <tr>
-                    <th>基金</th>
-                    <th>涨跌</th>
-                    <th>分位</th>
-                    <th>决策</th>
-                </tr>
+        <div class="summary-section">
+            <div class="summary-title">今日决策</div>
+            <div class="decision-card">
                 {summary_rows}
-            </table>
+            </div>
         </div>
         
-        {fund_sections}
+        <div class="detail-section">
+            {fund_sections}
+        </div>
         
         <div class="footer">
-            FundPilot-AI · 智能定投决策系统<br>
-            本建议仅供参考，不构成投资建议
+            <div class="footer-text">FundPilot · 量化定投决策系统</div>
+            <div class="footer-disclaimer">本报告基于量化模型生成，仅供投资参考，不构成买卖建议</div>
         </div>
     </div>
 </body>
-</html>
-"""
+</html>"""
 
-SUMMARY_ROW_TEMPLATE = """
-<tr>
-    <td>{fund_name}</td>
-    <td class="{change_class}">{estimate_change}</td>
-    <td>{percentile_60}</td>
-    <td><span style="color: {decision_color};">{decision_emoji} {decision}</span></td>
-</tr>
-"""
 
-FUND_SECTION_TEMPLATE = """
-<div class="fund-section" style="border-left-color: {decision_color};">
-    <div class="fund-header">
+SUMMARY_ROW_TEMPLATE = """<div class="decision-row">
+    <div class="decision-cell fund-info">
+        <div class="fund-name-short">{fund_name}</div>
+        <div class="fund-change" style="color: {change_color};">{estimate_change}</div>
+    </div>
+    <div class="decision-cell percentile-info">
+        <span class="percentile-value">{percentile}</span>
+    </div>
+    <div class="decision-cell decision-info">
+        <span class="decision-tag" style="background: {decision_bg}; color: {decision_color};">{decision}</span>
+    </div>
+</div>"""
+
+
+FUND_SECTION_TEMPLATE = """<div class="fund-detail">
+    <div class="detail-header">
         <div>
-            <span class="fund-name">{fund_name}</span>
-            <span class="fund-type">{fund_type_label}</span>
+            <div class="detail-fund-name">{fund_name}</div>
+            <div class="detail-fund-type">{fund_type} · {fund_code}</div>
         </div>
-        <span class="decision-badge {decision_class}">{decision_emoji} {decision}</span>
+        <span class="detail-decision" style="background: {decision_bg}; color: {decision_color};">{decision}</span>
     </div>
-    <div class="fund-reason">💡 {reasoning}</div>
-    <div class="fund-metrics">
-        <span class="metric">涨跌: <span class="metric-value {change_class}">{estimate_change}</span></span>
-        <span class="metric">分位: <span class="metric-value">{percentile_60}</span></span>
-        <span class="metric">偏离: <span class="metric-value {deviation_class}">{ma_deviation}</span></span>
-        <span class="metric">区间: <span class="metric-value">{zone}</span></span>
+    
+    <div class="analysis-box">
+        <div class="analysis-text">{reasoning}</div>
     </div>
-    {holdings_info}
-</div>
-<div class="chart-container">
-    <img src="cid:{chart_cid}" alt="{fund_name}">
-</div>
-"""
+    
+    <div class="metrics-grid">
+        <div class="metrics-row">
+            <div class="metric-item">
+                <div class="metric-label">今日涨跌</div>
+                <div class="metric-value" style="color: {change_color};">{estimate_change}</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">年度分位</div>
+                <div class="metric-value">{percentile}</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">均线偏离</div>
+                <div class="metric-value" style="color: {deviation_color};">{ma_deviation}</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">估值区间</div>
+                <div class="metric-value">{zone}</div>
+            </div>
+        </div>
+    </div>
+    
+    {holdings_html}
+    
+    <div class="chart-box">
+        <img src="cid:{chart_cid}" alt="趋势图">
+    </div>
+</div>"""
 
-HOLDINGS_INFO_TEMPLATE = """
-<div class="holdings-info">
-    🏢 {holdings_summary}
-    {gainers_losers}
-</div>
-"""
 
-
-def _get_decision_class(decision: str) -> str:
-    """获取决策 CSS 类"""
-    class_map = {
-        "双倍补仓": "decision-double",
-        "正常定投": "decision-normal",
-        "暂停定投": "decision-stop",
-        "观望": "decision-hold"
-    }
-    return class_map.get(decision, "decision-hold")
-
-
-def _get_fund_type_label(fund_type: str) -> str:
-    """获取基金类型标签"""
-    type_map = {
-        "Bond": "债券",
-        "ETF_Feeder": "ETF联接"
-    }
-    return type_map.get(fund_type, fund_type)
+HOLDINGS_TEMPLATE = """<div class="holdings-box">
+    <div class="holdings-title">持仓动态</div>
+    <div>{summary}</div>
+    {details}
+</div>"""
 
 
 def generate_combined_email_html(
     reports: list[FundReport],
     time_str: str,
-    market_summary: str = "市场数据获取中..."
+    market_summary: str = ""
 ) -> str:
     """
     生成合并的 HTML 邮件内容
     
     Args:
         reports: 基金报告列表
-        time_str: 时间字符串
-        market_summary: 市场概况
+        time_str: 时间字符串（如 "14:30"）
+        market_summary: 市场概况（暂未使用）
     
     Returns:
         HTML 字符串
     """
-    # 生成汇总行
+    # 日期格式化
+    today = datetime.now()
+    date_str = f"{today.month}月{today.day}日 {time_str}"
+    
+    # 生成摘要行
     summary_rows = []
     for report in reports:
-        change_class = "positive" if report.estimate_change >= 0 else "negative"
+        # 基金名称截断
+        name = report.fund_name
+        if len(name) > 12:
+            name = name[:11] + "…"
+        
         summary_rows.append(SUMMARY_ROW_TEMPLATE.format(
-            fund_name=report.fund_name[:10] + "..." if len(report.fund_name) > 10 else report.fund_name,
-            estimate_change=f"{report.estimate_change:+.2f}%",
-            change_class=change_class,
-            percentile_60=f"{report.percentile_60:.0f}%",
+            fund_name=name,
+            estimate_change=_format_change(report.estimate_change),
+            change_color=_get_change_color(report.estimate_change),
+            percentile=f"{report.percentile_60:.0f}%",
             decision=report.decision,
-            decision_emoji=get_decision_emoji(report.decision),
-            decision_color=get_decision_color(report.decision)
+            decision_color=_get_decision_color(report.decision),
+            decision_bg=_get_decision_bg(report.decision)
         ))
     
     # 生成详细区块
     fund_sections = []
     for i, report in enumerate(reports):
-        change_class = "positive" if report.estimate_change >= 0 else "negative"
-        deviation_class = "positive" if report.ma_deviation >= 0 else "negative"
-        
         # 持仓信息
-        holdings_info = ""
+        holdings_html = ""
         if report.holdings_summary:
-            gainers_losers = ""
+            details = ""
             if report.top_gainers:
-                gainers_losers += f"<br>📈 领涨: {', '.join(report.top_gainers[:2])}"
+                details += f"领涨: {', '.join(report.top_gainers[:2])}"
             if report.top_losers:
-                gainers_losers += f"<br>📉 领跌: {', '.join(report.top_losers[:2])}"
+                if details:
+                    details += " · "
+                details += f"领跌: {', '.join(report.top_losers[:2])}"
             
-            holdings_info = HOLDINGS_INFO_TEMPLATE.format(
-                holdings_summary=report.holdings_summary,
-                gainers_losers=gainers_losers
+            holdings_html = HOLDINGS_TEMPLATE.format(
+                summary=report.holdings_summary,
+                details=f"<div style='margin-top: 6px; color: #888;'>{details}</div>" if details else ""
             )
         
         fund_sections.append(FUND_SECTION_TEMPLATE.format(
             fund_name=report.fund_name,
-            fund_type_label=_get_fund_type_label(report.fund_type),
+            fund_type=_get_fund_type_label(report.fund_type),
+            fund_code=report.fund_code,
             decision=report.decision,
-            decision_emoji=get_decision_emoji(report.decision),
-            decision_color=get_decision_color(report.decision),
-            decision_class=_get_decision_class(report.decision),
+            decision_color=_get_decision_color(report.decision),
+            decision_bg=_get_decision_bg(report.decision),
             reasoning=report.reasoning,
-            estimate_change=f"{report.estimate_change:+.2f}%",
-            change_class=change_class,
-            percentile_60=f"{report.percentile_60:.1f}%",
-            ma_deviation=f"{report.ma_deviation:+.2f}%",
-            deviation_class=deviation_class,
+            estimate_change=_format_change(report.estimate_change),
+            change_color=_get_change_color(report.estimate_change),
+            percentile=f"{report.percentile_60:.0f}%",
+            ma_deviation=_format_change(report.ma_deviation),
+            deviation_color=_get_change_color(report.ma_deviation),
             zone=report.zone,
-            holdings_info=holdings_info,
+            holdings_html=holdings_html,
             chart_cid=report.chart_cid or f"chart_{i}"
         ))
     
     return COMBINED_EMAIL_TEMPLATE.format(
-        time=time_str,
+        date_str=date_str,
         fund_count=len(reports),
-        market_summary=market_summary,
-        summary_rows="".join(summary_rows),
-        fund_sections="".join(fund_sections)
+        summary_rows="\n".join(summary_rows),
+        fund_sections="\n".join(fund_sections)
     )
 
 
@@ -351,21 +472,41 @@ def generate_combined_email_subject(
     reports: list[FundReport],
     time_str: str
 ) -> str:
-    """生成合并邮件标题"""
+    """
+    生成邮件标题 - 简洁专业
+    
+    格式: 定投决策 | 1月30日 | 2补仓 1观望
+    """
+    today = datetime.now()
+    date_str = f"{today.month}.{today.day}"
+    
     # 统计决策
-    decisions = [r.decision for r in reports]
     decision_counts = {}
-    for d in decisions:
-        decision_counts[d] = decision_counts.get(d, 0) + 1
+    for r in reports:
+        short_name = {
+            "双倍补仓": "补仓",
+            "正常定投": "定投",
+            "暂停定投": "暂停",
+            "观望": "观望"
+        }.get(r.decision, r.decision)
+        decision_counts[short_name] = decision_counts.get(short_name, 0) + 1
     
-    # 找出主要决策
-    main_decision = max(decision_counts, key=decision_counts.get)
-    emoji = get_decision_emoji(main_decision)
+    # 生成决策摘要（按优先级排序）
+    priority = ["补仓", "定投", "暂停", "观望"]
+    summary_parts = []
+    for d in priority:
+        if d in decision_counts:
+            summary_parts.append(f"{decision_counts[d]}{d}")
     
-    return f"【FundPilot】{time_str} 决策报告 | {len(reports)}只基金 {emoji}"
+    summary = " ".join(summary_parts[:3])  # 最多显示3个
+    
+    return f"定投决策 | {date_str} | {summary}"
 
 
-# 保留旧的单基金模板函数（兼容性）
+# ============================================================
+# 兼容旧接口
+# ============================================================
+
 def generate_email_html(
     fund_name: str,
     decision: str,
@@ -405,5 +546,5 @@ def generate_email_subject(
     time_str: str
 ) -> str:
     """生成邮件标题（兼容旧接口）"""
-    emoji = get_decision_emoji(decision)
-    return f"【FundPilot】{time_str} 决策: [{decision}] {emoji} {estimate_change:+.2f}% ({fund_name})"
+    today = datetime.now()
+    return f"定投决策 | {today.month}.{today.day} | {decision}"
