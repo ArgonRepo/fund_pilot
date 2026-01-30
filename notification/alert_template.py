@@ -228,14 +228,7 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
     <div class="email-container">
-        <div class="header">
-            <div class="header-badge">盘中预警</div>
-            <div class="header-title">上午数据快照</div>
-            <div class="header-meta">{date_str} · {fund_count} 只基金</div>
-        </div>
-        
         <div class="market-section">
-            <div class="section-title">市场概况</div>
             <div class="market-grid">
                 <div class="market-item" style="margin-right: 8px;">
                     <div class="market-name">上证指数</div>
@@ -254,10 +247,11 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
             <div class="section-title">基金实时估值</div>
             <table class="data-table">
                 <tr>
+                    <th>代码</th>
                     <th>基金</th>
                     <th class="text-right">今日估值</th>
-                    <th class="text-center">分位</th>
-                    <th class="text-center">区间</th>
+                    <th class="text-center">250日分位</th>
+                    <th class="text-center">估值区间</th>
                 </tr>
                 {fund_rows}
             </table>
@@ -267,9 +261,10 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
             <div class="section-title">量化指标</div>
             <table class="data-table">
                 <tr>
+                    <th>代码</th>
                     <th>基金</th>
-                    <th class="text-right">均线偏离</th>
-                    <th class="text-right">60日回撤</th>
+                    <th class="text-right">60日均线偏离</th>
+                    <th class="text-right">60日最大回撤</th>
                 </tr>
                 {metrics_rows}
             </table>
@@ -285,6 +280,7 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
 
 
 FUND_ROW_TEMPLATE = """<tr>
+    <td style="color: #888; font-size: 12px;">{fund_code}</td>
     <td class="fund-name-cell">{fund_name}<span class="fund-type-badge">{fund_type}</span></td>
     <td class="text-right" style="color: {change_color}; font-weight: 500;">{estimate_change}</td>
     <td class="text-center" style="font-weight: 500;">{percentile}</td>
@@ -293,6 +289,7 @@ FUND_ROW_TEMPLATE = """<tr>
 
 
 METRICS_ROW_TEMPLATE = """<tr>
+    <td style="color: #888; font-size: 12px;">{fund_code}</td>
     <td class="fund-name-cell">{fund_name_short}</td>
     <td class="text-right" style="color: {deviation_color};">{ma_deviation}</td>
     <td class="text-right">{drawdown}</td>
@@ -345,6 +342,7 @@ def generate_alert_email_html(
             name = name[:9] + "…"
         
         fund_rows.append(FUND_ROW_TEMPLATE.format(
+            fund_code=fund.fund_code,
             fund_name=name,
             fund_type=_get_fund_type_short(fund.fund_type),
             estimate_change=_format_change(fund.estimate_change),
@@ -363,6 +361,7 @@ def generate_alert_email_html(
             name = name[:7] + "…"
         
         metrics_rows.append(METRICS_ROW_TEMPLATE.format(
+            fund_code=fund.fund_code,
             fund_name_short=name,
             ma_deviation=_format_change(fund.ma_deviation),
             deviation_color=_get_change_color(fund.ma_deviation),
