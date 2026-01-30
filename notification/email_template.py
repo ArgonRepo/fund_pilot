@@ -293,6 +293,30 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
             color: #bbb;
             margin-top: 8px;
         }}
+        
+        /* 指标说明 */
+        .glossary-section {{
+            padding: 20px 24px;
+            background: #fff;
+            border-top: 1px solid #f5f5f5;
+        }}
+        .glossary-title {{
+            font-size: 12px;
+            font-weight: 500;
+            color: #666;
+            margin-bottom: 12px;
+        }}
+        .glossary-item {{
+            margin-bottom: 8px;
+            font-size: 11px;
+            color: #888;
+            line-height: 1.5;
+        }}
+        .glossary-term {{
+            font-weight: 500;
+            color: #666;
+            margin-right: 4px;
+        }}
     </style>
 </head>
 <body>
@@ -311,6 +335,22 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
         
         <div class="detail-section">
             {fund_sections}
+        </div>
+        
+        <div class="glossary-section">
+            <div class="glossary-title">📌 指标说明</div>
+            <div class="glossary-item">
+                <span class="glossary-term">250日分位:</span>
+                当前净值在过去250个交易日（约一年）中的相对位置。0%代表最低，100%代表最高，用于判断当前价格在这个周期内是便宜还是昂贵。
+            </div>
+            <div class="glossary-item">
+                <span class="glossary-term">60日均线偏离:</span>
+                当前净值相对于过去60日平均净值的偏离程度。正值表示高于均线（强势），负值表示低于均线（弱势）。
+            </div>
+            <div class="glossary-item">
+                <span class="glossary-term">60日最大回撤:</span>
+                过去60个交易日内，从最高点回落的最大幅度，反映近期可能面临的最大跌幅风险。
+            </div>
         </div>
         
         <div class="footer">
