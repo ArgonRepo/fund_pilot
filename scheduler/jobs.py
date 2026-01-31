@@ -59,12 +59,13 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             logger.warning(f"基金 {fund.code} 获取估值失败")
             return FundResult(fund=fund, success=False, error="获取估值失败")
         
-        history = get_fund_history(fund.code, days=260)
+        # 2. 获取历史净值（520天，约2年，用于计算500日分位）
+        history = get_fund_history(fund.code, days=520)
         if not history:
             logger.warning(f"基金 {fund.code} 获取历史净值失败")
             return FundResult(fund=fund, success=False, error="获取历史净值失败")
         
-        # 3. 计算量化指标（使用250日分位值）
+        # 3. 计算量化指标（多周期分位值 + 波动率）
         prices_history = [nav for _, nav in history]
         metrics = calculate_all_metrics(
             current_price=valuation.estimate_nav,
@@ -133,7 +134,14 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             holdings_summary=holdings.summary if holdings else None,
             top_gainers=holdings.top_gainers if holdings else None,
             top_losers=holdings.top_losers if holdings else None,
-            chart_cid=f"chart_{fund.code}"
+            chart_cid=f"chart_{fund.code}",
+            # 新增字段
+            warnings=strategy_result.warnings,
+            percentile_60=metrics.percentile_60,
+            percentile_500=metrics.percentile_500,
+            volatility_60=metrics.volatility_60,
+            percentile_consensus=metrics.percentile_consensus,
+            trend_direction=metrics.trend_direction
         )
         
         # 10. 记录决策日志（复用 context_json）
@@ -282,8 +290,8 @@ def run_alert_task():
                 logger.warning(f"预警: {fund.name} 估值获取失败")
                 continue
             
-            # 获取历史数据计算指标
-            history = get_fund_history(fund.code, days=260)
+            # 获取历史数据计算指标（520天用于多周期分位）
+            history = get_fund_history(fund.code, days=520)
             if not history:
                 logger.warning(f"预警: {fund.name} 历史数据获取失败")
                 continue

@@ -1,6 +1,6 @@
 """
 FundPilot-AI 量化指标单元测试
-更新：测试 250 日分位值计算
+更新 v2.0：测试多周期分位值和波动率计算
 """
 
 import pytest
@@ -10,8 +10,9 @@ from strategy.indicators import (
     calculate_ma_deviation,
     calculate_drawdown,
     calculate_all_metrics,
+    calculate_volatility,
     get_percentile_zone,
-    PERCENTILE_WINDOW,
+    PERCENTILE_WINDOW_MID,
     MA_WINDOW
 )
 
@@ -160,8 +161,34 @@ class TestCalculateAllMetrics:
         assert metrics.min_250 == 1.0
         assert 0 <= metrics.percentile_250 <= 100
         assert metrics.daily_change == 2.5
+        # 新增字段测试
+        assert 0 <= metrics.percentile_60 <= 100
+        assert 0 <= metrics.percentile_500 <= 100
+        assert metrics.volatility_60 >= 0
     
     def test_window_config(self):
         """测试窗口配置"""
-        assert PERCENTILE_WINDOW == 250
+        assert PERCENTILE_WINDOW_MID == 250
         assert MA_WINDOW == 60
+
+
+class TestVolatility:
+    """波动率计算测试"""
+    
+    def test_stable_prices(self):
+        """测试稳定价格"""
+        prices = [1.0] * 60
+        result = calculate_volatility(prices, 60)
+        assert result == 0.0
+    
+    def test_volatile_prices(self):
+        """测试波动价格"""
+        # 交替涨跌
+        prices = [1.0 + (0.01 if i % 2 == 0 else -0.01) for i in range(60)]
+        result = calculate_volatility(prices, 60)
+        assert result > 0
+    
+    def test_empty_prices(self):
+        """测试空列表"""
+        result = calculate_volatility([], 60)
+        assert result == 0.0

@@ -17,13 +17,20 @@ class FundReport:
     decision: str
     reasoning: str
     estimate_change: float
-    percentile_250: float  # 250 日分位值
+    percentile_250: float  # 250 日分位值（主要参考）
     ma_deviation: float
     zone: str
     holdings_summary: Optional[str] = None
     top_gainers: Optional[list[str]] = None
     top_losers: Optional[list[str]] = None
     chart_cid: Optional[str] = None
+    # 新增字段 v2.0
+    warnings: Optional[list[str]] = None           # 风险提示列表
+    percentile_60: Optional[float] = None          # 60日分位值
+    percentile_500: Optional[float] = None         # 500日分位值
+    volatility_60: Optional[float] = None          # 60日年化波动率
+    percentile_consensus: Optional[str] = None     # 多周期共识
+    trend_direction: Optional[str] = None          # 趋势方向
 
 
 # 决策颜色配置（专业克制）
