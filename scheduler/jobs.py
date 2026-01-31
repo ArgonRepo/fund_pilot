@@ -332,7 +332,11 @@ def run_alert_task():
                 ma_deviation=metrics.ma_deviation,
                 zone=zone,
                 drawdown=metrics.drawdown_60,  # 使用 60 日回撤
-                holdings_txt=holdings_txt
+                holdings_txt=holdings_txt,
+                # 新增字段 v2.0
+                percentile_60=metrics.percentile_60,
+                percentile_500=metrics.percentile_500,
+                volatility_60=metrics.volatility_60
             )
             fund_data_list.append(fund_data)
             

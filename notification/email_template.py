@@ -75,6 +75,18 @@ def _get_change_color(change: float) -> str:
     return "#333333"
 
 
+def _get_consensus_color(consensus: str) -> str:
+    """共识颜色"""
+    colors = {
+        "强低估": "#2E7D32",   # 深绿
+        "弱低估": "#66BB6A",   # 浅绿
+        "分歧": "#FF9800",     # 橙色
+        "弱高估": "#EF5350",   # 浅红
+        "强高估": "#C62828",   # 深红
+    }
+    return colors.get(consensus, "#757575")
+
+
 # ============================================================
 # 主邮件模板 - 简洁专业风格
 # ============================================================
@@ -357,19 +369,43 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
         </div>
         
         <div class="glossary-section">
-            <div class="glossary-title">📌 指标说明</div>
+            <div class="glossary-title">📌 投资新手必读 - 术语说明</div>
             <table class="glossary-table">
                 <tr>
                     <td class="term-cell">250日分位</td>
-                    <td>当前净值在过去250个交易日（约一年）中的相对位置。0%代表最低，100%代表最高，用于判断当前价格在年内是便宜还是昂贵。</td>
+                    <td>当前价格在过去一年内的位置。0%表示一年最低，100%表示一年最高。类似于“历史打折力度”。</td>
                 </tr>
                 <tr>
-                    <td class="term-cell">估值区间</td>
-                    <td>基于分位值划分的评价区间（如黄金坑、低估、合理、高估），是触发定投倍数调整的核心依据。</td>
+                    <td class="term-cell">多周期分位</td>
+                    <td>同时查看 60日（3个月）、250日（1年）、500日（2年）的分位值，交叉验证当前是否真的便宜或昂贵。</td>
+                </tr>
+                <tr>
+                    <td class="term-cell">多周期共识</td>
+                    <td>短中长期分位是否一致。“强低估”表示三个周期都认为当前便宜，信号更可靠；“分歧”表示各周期看法不一致，需谨慎。</td>
                 </tr>
                 <tr>
                     <td class="term-cell">60日均线偏离</td>
-                    <td>当前净值相对于过去60日平均净值的偏离程度。正值表示高于均线（趋势向好），负值表示低于均线（趋势走弱）。</td>
+                    <td>当前价格相对于近 60 天平均价的偏离。正值 = 高于均线（走强），负值 = 低于均线（走弱）。</td>
+                </tr>
+                <tr>
+                    <td class="term-cell">年化波动率</td>
+                    <td>衡量价格波动的剧烈程度。债券通常 3-5%（稳定），股票型通常 15-25%（波动大）。波动越大风险越高。</td>
+                </tr>
+                <tr>
+                    <td class="term-cell">估值区间</td>
+                    <td>基于分位值划分：黄金坑（0-20%）、低估区（20-40%）、合理区（40-60%）、偏高区（60-80%）、高估区（80-100%）。</td>
+                </tr>
+                <tr>
+                    <td class="term-cell">动态阈值</td>
+                    <td>系统根据品种波动率自动调整判断标准。低波动债券使用更敏感的阈值，高波动 ETF 使用更宽松的阈值。</td>
+                </tr>
+                <tr>
+                    <td class="term-cell">熔断机制</td>
+                    <td>单日波动异常时（股票型±7%、债券型-2%），系统暂停自动决策，等待次日冷静判断。</td>
+                </tr>
+                <tr>
+                    <td class="term-cell">只买不卖</td>
+                    <td>本系统针对 A 类份额设计，赎回费较高（持有 730 天内）。建议长期持有，满 2 年后可考虑再平衡。</td>
                 </tr>
             </table>
         </div>
@@ -411,6 +447,8 @@ FUND_SECTION_TEMPLATE = """<div class="fund-detail">
         <div class="analysis-text">{reasoning}</div>
     </div>
     
+    {warnings_html}
+    
     <div class="metrics-grid">
         <div class="metrics-row">
             <div class="metric-item">
@@ -418,12 +456,22 @@ FUND_SECTION_TEMPLATE = """<div class="fund-detail">
                 <div class="metric-value" style="color: {change_color};">{estimate_change}</div>
             </div>
             <div class="metric-item">
-                <div class="metric-label">250日分位</div>
-                <div class="metric-value">{percentile}</div>
+                <div class="metric-label">多周期分位</div>
+                <div class="metric-value" style="font-size: 12px;">{multi_percentile}</div>
             </div>
+            <div class="metric-item">
+                <div class="metric-label">多周期共识</div>
+                <div class="metric-value" style="color: {consensus_color};">{consensus}</div>
+            </div>
+        </div>
+        <div class="metrics-row">
             <div class="metric-item">
                 <div class="metric-label">60日均线偏离</div>
                 <div class="metric-value" style="color: {deviation_color};">{ma_deviation}</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">年化波动率</div>
+                <div class="metric-value">{volatility}</div>
             </div>
             <div class="metric-item">
                 <div class="metric-label">估值区间</div>
@@ -505,6 +553,31 @@ def generate_combined_email_html(
                 details=f"<div style='margin-top: 6px; color: #888;'>{details}</div>" if details else ""
             )
         
+        # 风险提示 HTML
+        warnings_html = ""
+        if report.warnings:
+            warning_items = "".join([
+                f"<div style='margin-bottom: 4px;'>{w}</div>" 
+                for w in report.warnings
+            ])
+            warnings_html = f"""<div style="background: #FFF8E1; border-left: 3px solid #FFC107; padding: 10px 14px; margin-bottom: 14px; border-radius: 4px; font-size: 12px; color: #5D4037;">
+                <div style="font-weight: 500; margin-bottom: 6px;">⚠️ 风险提示</div>
+                {warning_items}
+            </div>"""
+        
+        # 多周期分位显示
+        p60 = f"{report.percentile_60:.0f}" if report.percentile_60 is not None else "?"
+        p250 = f"{report.percentile_250:.0f}"
+        p500 = f"{report.percentile_500:.0f}" if report.percentile_500 is not None else "?"
+        multi_percentile = f"{p60}/{p250}/{p500}%"
+        
+        # 共识颜色
+        consensus = report.percentile_consensus or "N/A"
+        consensus_color = _get_consensus_color(consensus)
+        
+        # 波动率
+        volatility = f"{report.volatility_60:.1f}%" if report.volatility_60 is not None else "N/A"
+        
         fund_sections.append(FUND_SECTION_TEMPLATE.format(
             fund_name=report.fund_name,
             fund_type=_get_fund_type_label(report.fund_type),
@@ -515,10 +588,14 @@ def generate_combined_email_html(
             reasoning=report.reasoning,
             estimate_change=_format_change(report.estimate_change),
             change_color=_get_change_color(report.estimate_change),
-            percentile=f"{report.percentile_250:.0f}%",
+            multi_percentile=multi_percentile,
+            consensus=consensus,
+            consensus_color=consensus_color,
             ma_deviation=_format_change(report.ma_deviation),
             deviation_color=_get_change_color(report.ma_deviation),
+            volatility=volatility,
             zone=report.zone,
+            warnings_html=warnings_html,
             holdings_html=holdings_html,
             chart_cid=report.chart_cid or f"chart_{i}"
         ))
