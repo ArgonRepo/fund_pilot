@@ -17,7 +17,7 @@ class FundReport:
     decision: str
     reasoning: str
     estimate_change: float
-    percentile_60: float  # 命名保留兼容，实际是 250 日分位
+    percentile_250: float  # 250 日分位值
     ma_deviation: float
     zone: str
     holdings_summary: Optional[str] = None
@@ -473,7 +473,7 @@ def generate_combined_email_html(
             fund_name=name,
             estimate_change=_format_change(report.estimate_change),
             change_color=_get_change_color(report.estimate_change),
-            percentile=f"{report.percentile_60:.0f}%",
+            percentile=f"{report.percentile_250:.0f}%",
             decision=report.decision,
             decision_color=_get_decision_color(report.decision),
             decision_bg=_get_decision_bg(report.decision)
@@ -508,7 +508,7 @@ def generate_combined_email_html(
             reasoning=report.reasoning,
             estimate_change=_format_change(report.estimate_change),
             change_color=_get_change_color(report.estimate_change),
-            percentile=f"{report.percentile_60:.0f}%",
+            percentile=f"{report.percentile_250:.0f}%",
             ma_deviation=_format_change(report.ma_deviation),
             deviation_color=_get_change_color(report.ma_deviation),
             zone=report.zone,
@@ -569,7 +569,7 @@ def generate_email_html(
     decision: str,
     reasoning: str,
     estimate_change: float,
-    percentile_60: float,
+    percentile_250: float,
     ma_deviation: float,
     zone: str,
     time_str: str,
@@ -585,7 +585,7 @@ def generate_email_html(
         decision=decision,
         reasoning=reasoning,
         estimate_change=estimate_change,
-        percentile_60=percentile_60,
+        percentile_250=percentile_250,
         ma_deviation=ma_deviation,
         zone=zone,
         holdings_summary=holdings_summary,

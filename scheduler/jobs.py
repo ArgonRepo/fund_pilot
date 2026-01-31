@@ -11,7 +11,7 @@ from core.config import get_config, FundConfig
 from core.logger import get_logger
 from core.database import get_database
 from data.fund_valuation import fetch_fund_valuation, FundValuation
-from data.fund_history import get_fund_history, calculate_nav_stats, get_recent_nav
+from data.fund_history import get_fund_history, get_recent_nav
 from data.holdings import get_holdings_with_quotes
 from data.market import get_market_context
 from data.http_client import request_stats  # 请求统计
@@ -59,13 +59,10 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             logger.warning(f"基金 {fund.code} 获取估值失败")
             return FundResult(fund=fund, success=False, error="获取估值失败")
         
-        # 2. 获取历史净值（260天，约1年，用于计算250日分位）
         history = get_fund_history(fund.code, days=260)
         if not history:
             logger.warning(f"基金 {fund.code} 获取历史净值失败")
             return FundResult(fund=fund, success=False, error="获取历史净值失败")
-        
-        nav_stats = calculate_nav_stats(history)
         
         # 3. 计算量化指标（使用250日分位值）
         prices_history = [nav for _, nav in history]
@@ -130,7 +127,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             decision=final_decision,
             reasoning=ai_reasoning,
             estimate_change=valuation.estimate_change,
-            percentile_60=metrics.percentile_60,
+            percentile_250=metrics.percentile_250,
             ma_deviation=metrics.ma_deviation,
             zone=strategy_result.zone,
             holdings_summary=holdings.summary if holdings else None,
@@ -139,17 +136,17 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             chart_cid=f"chart_{fund.code}"
         )
         
-        # 10. 记录决策日志
+        # 10. 记录决策日志（复用 context_json）
         db = get_database()
         db.save_decision_log(
             fund_code=fund.code,
             decision_time=datetime.now(),
             estimate_change=valuation.estimate_change,
-            percentile_60=metrics.percentile_60,
+            percentile_250=metrics.percentile_250,
             ma_60=metrics.ma_60,
             ai_decision=final_decision,
             ai_reasoning=ai_reasoning,
-            raw_context=build_context(fund, valuation, metrics, holdings, market)
+            raw_context=context_json
         )
         
         logger.info(f"基金 {fund.name} 处理完成: {final_decision}")
@@ -326,7 +323,7 @@ def run_alert_task():
                 percentile_250=metrics.percentile_250,
                 ma_deviation=metrics.ma_deviation,
                 zone=zone,
-                drawdown=metrics.drawdown or 0,
+                drawdown=metrics.drawdown_60,  # 使用 60 日回撤
                 holdings_txt=holdings_txt
             )
             fund_data_list.append(fund_data)

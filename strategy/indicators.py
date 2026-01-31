@@ -24,13 +24,9 @@ class QuantMetrics:
     ma_deviation: float           # 均线偏离度 (%)
     max_250: float                # 250日最高
     min_250: float                # 250日最低
-    drawdown: Optional[float]     # 回撤幅度 (%)
+    drawdown: Optional[float]     # 回撤幅度 (%) - 基于 250 日最高点
+    drawdown_60: Optional[float]  # 60日回撤幅度 (%) - 短期风险指标
     daily_change: Optional[float] # 当日涨跌幅 (%)
-    
-    # 兼容旧代码
-    @property
-    def percentile_60(self) -> float:
-        return self.percentile_250
 
 
 def calculate_percentile(current_price: float, prices: list[float]) -> float:
@@ -141,6 +137,7 @@ def calculate_all_metrics(
             max_250=current_price,
             min_250=current_price,
             drawdown=0.0,
+            drawdown_60=0.0,
             daily_change=daily_change
         )
     
@@ -149,7 +146,9 @@ def calculate_all_metrics(
     max_250 = max(prices_250)
     min_250 = min(prices_250)
     
-    # 取 60 日数据用于均线计算
+    # 取 60 日数据用于均线和回撤计算
+    prices_60 = prices_history[:MA_WINDOW] if len(prices_history) > MA_WINDOW else prices_history
+    max_60 = max(prices_60)
     ma_60 = calculate_ma(prices_history, MA_WINDOW)
     
     return QuantMetrics(
@@ -159,6 +158,7 @@ def calculate_all_metrics(
         max_250=max_250,
         min_250=min_250,
         drawdown=calculate_drawdown(current_price, max_250),
+        drawdown_60=calculate_drawdown(current_price, max_60),
         daily_change=daily_change
     )
 
@@ -183,14 +183,3 @@ def get_percentile_zone(percentile: float) -> str:
         return "偏高区"
     else:
         return "高估区"
-
-
-# 兼容旧代码
-def calculate_percentile_60(current_price: float, prices_60d: list[float]) -> float:
-    """向后兼容：计算分位值"""
-    return calculate_percentile(current_price, prices_60d)
-
-
-def calculate_ma_60(prices_60d: list[float]) -> float:
-    """向后兼容：计算 60 日均线"""
-    return calculate_ma(prices_60d, 60)

@@ -118,11 +118,11 @@ def get_decision_emoji(decision: str) -> str:
 
 
 def get_decision_color(decision: str) -> str:
-    """获取决策对应的颜色（用于邮件）"""
+    """获取决策对应的颜色（用于邮件）- 与 email_template 保持一致"""
     color_map = {
-        "双倍补仓": "#e74c3c",   # 红色
-        "正常定投": "#27ae60",   # 绿色
-        "暂停定投": "#f39c12",   # 橙色
-        "观望": "#3498db"        # 蓝色
+        "双倍补仓": "#D32F2F",   # 深红
+        "正常定投": "#388E3C",   # 深绿
+        "暂停定投": "#F57C00",   # 橙色
+        "观望": "#757575"        # 灰色
     }
-    return color_map.get(decision, "#95a5a6")
+    return color_map.get(decision, "#757575")

@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS decision_log (
     fund_code TEXT NOT NULL,
     decision_time TIMESTAMP NOT NULL,
     estimate_change REAL,
-    percentile_60 REAL,
+    percentile_250 REAL,
     ma_60 REAL,
     ai_decision TEXT NOT NULL,
     ai_reasoning TEXT,
@@ -153,7 +153,7 @@ class Database:
         fund_code: str,
         decision_time: datetime,
         estimate_change: Optional[float],
-        percentile_60: Optional[float],
+        percentile_250: Optional[float],
         ma_60: Optional[float],
         ai_decision: str,
         ai_reasoning: Optional[str] = None,
@@ -164,10 +164,10 @@ class Database:
             conn.execute(
                 """
                 INSERT INTO decision_log 
-                (fund_code, decision_time, estimate_change, percentile_60, ma_60, ai_decision, ai_reasoning, raw_context)
+                (fund_code, decision_time, estimate_change, percentile_250, ma_60, ai_decision, ai_reasoning, raw_context)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (fund_code, decision_time.isoformat(), estimate_change, percentile_60, ma_60, ai_decision, ai_reasoning, raw_context)
+                (fund_code, decision_time.isoformat(), estimate_change, percentile_250, ma_60, ai_decision, ai_reasoning, raw_context)
             )
         logger.info(f"保存决策日志: {fund_code} -> {ai_decision}")
     
@@ -201,6 +201,21 @@ class Database:
                 (fund_code,)
             )
             return [(row["stock_code"], row["stock_name"], row["weight"]) for row in cursor]
+    
+    def get_holdings_updated_at(self, fund_code: str) -> Optional[datetime]:
+        """获取持仓缓存的更新时间"""
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT MAX(updated_at) as updated_at FROM holdings_cache
+                WHERE fund_code = ?
+                """,
+                (fund_code,)
+            )
+            row = cursor.fetchone()
+            if row and row["updated_at"]:
+                return datetime.fromisoformat(row["updated_at"])
+            return None
 
 
 # 全局数据库实例

@@ -27,6 +27,7 @@ class TestETFStrategy:
             max_250=1.2,
             min_250=0.8,
             drawdown=0,
+            drawdown_60=0,
             daily_change=daily_change
         )
     
@@ -124,6 +125,7 @@ class TestBondStrategy:
             max_250=1.02,
             min_250=0.98,
             drawdown=0,
+            drawdown_60=0,
             daily_change=daily_change
         )
     
@@ -171,6 +173,7 @@ class TestBondSignal:
             max_250=1.02,
             min_250=0.98,
             drawdown=0,
+            drawdown_60=0,
             daily_change=-0.05  # 太小，不触发
         )
         signal = detect_bond_signal(metrics)
@@ -185,6 +188,7 @@ class TestBondSignal:
             max_250=1.02,
             min_250=0.98,
             drawdown=0,
+            drawdown_60=0,
             daily_change=-0.1
         )
         signal = detect_bond_signal(metrics)
@@ -200,6 +204,7 @@ class TestBondSignal:
             max_250=1.02,
             min_250=0.98,
             drawdown=0,
+            drawdown_60=0,
             daily_change=-0.1
         )
         signal = detect_bond_signal(metrics)

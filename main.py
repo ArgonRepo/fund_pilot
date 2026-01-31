@@ -5,9 +5,14 @@ FundPilot-AI 基金智能定投决策系统
 
 import os
 import sys
+import time
 
 # 强制设置时区
 os.environ['TZ'] = 'Asia/Shanghai'
+try:
+    time.tzset()  # 使时区设置生效（某些系统需要）
+except AttributeError:
+    pass  # Windows 系统没有 tzset
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger

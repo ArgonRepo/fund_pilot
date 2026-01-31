@@ -161,13 +161,32 @@ def get_holdings_with_quotes(fund_config: FundConfig) -> Optional[HoldingsInsigh
     Returns:
         HoldingsInsight 对象
     """
+    from datetime import datetime, timedelta
+    
     db = get_database()
     
-    # 获取持仓（优先从缓存）
-    holdings_data = db.get_holdings(fund_config.code)
+    # 持仓缓存过期时间（90天，持仓通常每季度更新）
+    HOLDINGS_CACHE_TTL_DAYS = 90
+    
+    # 检查缓存是否过期
+    cache_updated_at = db.get_holdings_updated_at(fund_config.code)
+    cache_expired = True
+    
+    if cache_updated_at:
+        age_days = (datetime.now() - cache_updated_at).days
+        cache_expired = age_days > HOLDINGS_CACHE_TTL_DAYS
+        if cache_expired:
+            logger.info(f"基金 {fund_config.code} 持仓缓存已过期 ({age_days} 天)，刷新中...")
+    
+    # 获取持仓数据
+    holdings_data = None
+    
+    if not cache_expired:
+        # 缓存有效，使用缓存
+        holdings_data = db.get_holdings(fund_config.code)
     
     if not holdings_data:
-        # 从 API 获取
+        # 缓存过期或不存在，从 API 获取
         holdings_data = fetch_fund_holdings(fund_config.code, fund_config.underlying_etf)
         if holdings_data:
             db.save_holdings(fund_config.code, holdings_data)
