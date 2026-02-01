@@ -66,8 +66,21 @@ class DeepSeekClient:
                 timeout=REQUEST_TIMEOUT
             )
             
+            # 安全获取内容
+            if not response.choices:
+                logger.warning("DeepSeek 返回无 choices")
+                return None
+                
             content = response.choices[0].message.content
-            logger.info(f"DeepSeek 返回: {content[:100]}...")
+            
+            # 处理空内容情况
+            if not content or not content.strip():
+                logger.warning(f"DeepSeek 返回内容为空 (finish_reason: {response.choices[0].finish_reason})")
+                return None
+            
+            # 记录返回内容（截断显示）
+            display_content = content[:100] + "..." if len(content) > 100 else content
+            logger.info(f"DeepSeek 返回: {display_content}")
             return content
             
         except Exception as e:

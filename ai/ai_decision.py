@@ -202,12 +202,25 @@ def get_ai_decision(
         client = get_deepseek_client()
         response = client.chat(system_prompt, user_message, temperature=0.3, max_tokens=400)
         
-        if not response:
-            logger.warning(f"AI决策返回为空: {fund_config.name}")
+        # 增强空值检测：检查长度和关键词
+        if not response or len(response) < 10:
+            logger.warning(f"AI决策返回过短: {fund_config.name} (长度: {len(response) if response else 0})")
+            return None
+        
+        # 检查是否包含必要标记
+        if "【决策】" not in response and "决策" not in response:
+            logger.warning(f"AI响应缺少决策标记: {fund_config.name}")
+            logger.debug(f"原始响应: {response}")
             return None
         
         # 解析响应
         decision, confidence, reasoning = _parse_ai_response(response)
+        
+        # 验证解析结果：如果 reasoning 为空说明解析可能失败
+        if not reasoning:
+            # 尝试从响应中提取任何有用信息作为理由
+            reasoning = response[:80] + "..." if len(response) > 80 else response
+            logger.warning(f"AI响应理由解析失败，使用原始响应: {fund_config.name}")
         
         logger.info(f"AI决策完成: {fund_config.name} -> {decision} ({confidence})")
         
