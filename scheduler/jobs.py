@@ -16,7 +16,7 @@ from data.holdings import get_holdings_with_quotes
 from data.market import get_market_context
 from data.http_client import request_stats
 from strategy.indicators import calculate_all_metrics, QuantMetrics
-from strategy.etf_strategy import evaluate_etf_strategy
+from strategy.etf_strategy import evaluate_etf_strategy, get_buy_multiplier
 from strategy.bond_strategy import evaluate_bond_strategy
 from strategy.asset_config import infer_asset_class
 from strategy.decision_synthesizer import synthesize_decisions
@@ -182,7 +182,13 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             ai_reasoning=synthesized.ai_reasoning,
             final_confidence=synthesized.final_confidence,
             synthesis_method=synthesized.synthesis_method,
-            asset_class=asset_class
+            asset_class=asset_class,
+            # v3.1 补仓倍数
+            buy_multiplier=get_buy_multiplier(
+                percentile=metrics.percentile_250,
+                consensus=metrics.percentile_consensus,
+                asset_class=asset_class
+            )
         )
         
         # 9. 记录决策日志

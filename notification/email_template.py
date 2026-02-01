@@ -41,6 +41,7 @@ class FundReport:
     final_confidence: Optional[str] = None         # 最终信心度
     synthesis_method: Optional[str] = None         # 合成方式
     asset_class: Optional[str] = None              # 资产类型
+    buy_multiplier: Optional[float] = None         # 建议补仓倍数 (1.0=正常, 2.0=双倍, 0=暂停)
 
 
 # ============================================================
@@ -84,6 +85,17 @@ def _get_change_color(change: float) -> str:
     elif change < 0:
         return "#27ae60"
     return "#2c3e50"
+
+
+def _format_multiplier(multiplier: float | None) -> str:
+    """格式化补仓倍数显示"""
+    if multiplier is None:
+        return "—"
+    if multiplier == 0:
+        return "暂停"
+    if multiplier == 1.0:
+        return "1x (正常)"
+    return f"{multiplier:.1f}x"
 
 
 def _get_zone_label(zone: str) -> str:
@@ -547,6 +559,7 @@ FUND_SECTION_TEMPLATE = """<div class="fund-card">
             <div class="conclusion-header">
                 <span class="conclusion-label">综合建议</span>
                 <span class="conclusion-decision" style="color: {decision_color};">{decision}</span>
+                <span style="font-size: 12px; color: #64748b; margin-left: 8px;">建议倍数: <strong style="color: #0369a1;">{buy_multiplier_display}</strong></span>
             </div>
             <div class="conclusion-reason">{reasoning}</div>
         </div>
@@ -663,7 +676,8 @@ def generate_combined_email_html(
             ai_tag_color=ai_tag_color,
             
             chart_cid=report.chart_cid or f"chart_{i}",
-            warning_html=warning_html
+            warning_html=warning_html,
+            buy_multiplier_display=_format_multiplier(report.buy_multiplier)
         ))
     
     return COMBINED_EMAIL_TEMPLATE.format(
