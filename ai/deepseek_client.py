@@ -38,7 +38,7 @@ class DeepSeekClient:
         system_prompt: str,
         user_message: str,
         temperature: float = 0.3,
-        max_tokens: int = 500
+        max_tokens: int = 2000
     ) -> Optional[str]:
         """
         发送聊天请求
