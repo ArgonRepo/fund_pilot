@@ -43,7 +43,10 @@ def _build_ai_context(
     market: Optional[MarketContext]
 ) -> dict:
     """
-    构建 AI 决策上下文（完整数据版）
+    构建 AI 决策上下文（完整数据版 v2.0）
+    
+    设计理念：提供尽可能丰富的客观数据，让 AI 进行独立专业分析
+    DeepSeek 支持 40K+ tokens，充分利用其上下文能力
     
     Args:
         fund_config: 基金配置
@@ -55,52 +58,179 @@ def _build_ai_context(
     Returns:
         上下文字典
     """
-    context = {
-        "fund_info": {
-            "name": fund_config.name,
-            "code": fund_config.code,
-            "type": fund_config.type,
-            "asset_class": fund_config.asset_class,
-            "asset_description": get_asset_description(fund_config.asset_class or "")
-        }
+    context = {}
+    
+    # ============================================
+    # 1. 基金基本信息
+    # ============================================
+    context["fund_info"] = {
+        "name": fund_config.name,
+        "code": fund_config.code,
+        "type": fund_config.type,
+        "asset_class": fund_config.asset_class,
+        "asset_description": get_asset_description(fund_config.asset_class or "")
     }
     
-    # 实时指标
-    if valuation and metrics:
-        context["real_time_data"] = {
-            "estimate_change": f"{valuation.estimate_change:+.2f}%",
-            "estimate_nav": valuation.estimate_nav,
+    # ============================================
+    # 2. 实时估值与核心指标
+    # ============================================
+    if valuation:
+        context["valuation"] = {
+            "today_estimate_change": f"{valuation.estimate_change:+.2f}%",
+            "estimate_nav": round(valuation.estimate_nav, 4),
+            "estimate_time": valuation.estimate_time,
+            "note": "估值为系统实时计算，非最终净值"
+        }
+    
+    if metrics:
+        # 多周期分位值（核心估值指标）
+        context["valuation_metrics"] = {
             "multi_period_percentile": {
-                "60d": round(metrics.percentile_60, 1),
-                "250d": round(metrics.percentile_250, 1),
-                "500d": round(metrics.percentile_500, 1),
+                "60_days": {
+                    "value": round(metrics.percentile_60, 1),
+                    "interpretation": _interpret_percentile(metrics.percentile_60)
+                },
+                "250_days": {
+                    "value": round(metrics.percentile_250, 1),
+                    "interpretation": _interpret_percentile(metrics.percentile_250)
+                },
+                "500_days": {
+                    "value": round(metrics.percentile_500, 1),
+                    "interpretation": _interpret_percentile(metrics.percentile_500)
+                }
             },
             "percentile_consensus": metrics.percentile_consensus,
             "trend_direction": metrics.trend_direction,
+            "note": "分位值表示当前净值在历史区间中的位置，0%=历史最低，100%=历史最高"
+        }
+        
+        # 技术指标
+        context["technical_indicators"] = {
+            "ma_60": round(metrics.ma_60, 4),
             "ma_60_deviation": f"{metrics.ma_deviation:+.2f}%",
-            "volatility_60": f"{metrics.volatility_60:.1f}%",
-            "max_250": round(metrics.max_250, 4),
-            "min_250": round(metrics.min_250, 4),
+            "ma_deviation_interpretation": "高于均线" if metrics.ma_deviation > 0 else "低于均线",
+            "volatility_60_annualized": f"{metrics.volatility_60:.1f}%",
+            "volatility_level": _interpret_volatility(metrics.volatility_60),
+            "price_range_250d": {
+                "max": round(metrics.max_250, 4),
+                "min": round(metrics.min_250, 4),
+                "current_position": f"距最高{((metrics.max_250 - valuation.estimate_nav) / metrics.max_250 * 100):.1f}%" if valuation else "N/A"
+            }
+        }
+        
+        # 风险指标
+        context["risk_indicators"] = {
+            "daily_change": f"{metrics.daily_change:+.2f}%" if metrics.daily_change else "N/A",
+            "drawdown_from_peak": f"{metrics.drawdown:.1f}%" if metrics.drawdown else "N/A",
+            "drawdown_60d": f"{metrics.drawdown_60:.1f}%" if metrics.drawdown_60 else "N/A",
+            "risk_assessment": _assess_risk(metrics)
         }
     
-    # 持仓洞察
-    if holdings:
-        context["holdings"] = {
-            "top_gainers": holdings.top_gainers[:3] if holdings.top_gainers else [],
-            "top_losers": holdings.top_losers[:3] if holdings.top_losers else [],
+    # ============================================
+    # 3. 完整持仓分析（ETF/股票型基金）
+    # ============================================
+    if holdings and holdings.holdings:
+        holdings_list = []
+        for h in holdings.holdings:
+            holding_data = {
+                "stock_name": h.stock_name,
+                "stock_code": h.stock_code,
+                "weight": f"{h.weight:.2f}%",
+            }
+            if h.change is not None:
+                holding_data["today_change"] = f"{h.change:+.2f}%"
+            holdings_list.append(holding_data)
+        
+        context["holdings_analysis"] = {
+            "top_holdings": holdings_list,
+            "holdings_count": len(holdings_list),
+            "top_gainers": holdings.top_gainers if holdings.top_gainers else [],
+            "top_losers": holdings.top_losers if holdings.top_losers else [],
             "summary": holdings.summary,
-            "note": "持仓数据来自季报，可能滞后 1-3 个月"
+            "data_source": "季报持仓数据，可能滞后1-3个月"
         }
     
-    # 市场环境
+    # ============================================
+    # 4. 市场环境（多指数）
+    # ============================================
     if market:
-        context["market"] = {
-            "shanghai_index_change": f"{market.shanghai_index.change:+.2f}%" if market.shanghai_index else "N/A",
-            "hs300_index_change": f"{market.hs300_index.change:+.2f}%" if market.hs300_index else "N/A",
+        market_data = {
             "summary": market.summary
         }
+        if market.shanghai_index:
+            market_data["shanghai_index"] = {
+                "current": market.shanghai_index.current,
+                "change": f"{market.shanghai_index.change:+.2f}%"
+            }
+        if market.hs300_index:
+            market_data["hs300_index"] = {
+                "current": market.hs300_index.current,
+                "change": f"{market.hs300_index.change:+.2f}%"
+            }
+        context["market_environment"] = market_data
+    
+    # ============================================
+    # 5. 分析提示（帮助 AI 理解数据）
+    # ============================================
+    context["analysis_hints"] = {
+        "decision_options": ["双倍补仓", "正常定投", "暂停定投", "观望"],
+        "confidence_levels": ["高", "中", "低"],
+        "key_factors_to_consider": [
+            "多周期分位值的一致性",
+            "当前价格相对于均线的位置",
+            "今日涨跌幅是否异常",
+            "持仓表现是否有信号意义",
+            "市场整体环境"
+        ]
+    }
     
     return context
+
+
+def _interpret_percentile(percentile: float) -> str:
+    """解释分位值含义"""
+    if percentile < 20:
+        return "极端低估区"
+    elif percentile < 40:
+        return "低估区"
+    elif percentile < 60:
+        return "正常区"
+    elif percentile < 80:
+        return "偏高区"
+    else:
+        return "极端高估区"
+
+
+def _interpret_volatility(volatility: float) -> str:
+    """解释波动率水平"""
+    if volatility < 5:
+        return "极低波动（类固收）"
+    elif volatility < 15:
+        return "低波动"
+    elif volatility < 25:
+        return "中等波动"
+    elif volatility < 35:
+        return "高波动"
+    else:
+        return "极高波动（高风险）"
+
+
+def _assess_risk(metrics: QuantMetrics) -> str:
+    """评估当前风险状况"""
+    risks = []
+    
+    if metrics.daily_change and metrics.daily_change < -3:
+        risks.append("今日大跌")
+    if metrics.drawdown and metrics.drawdown > 15:
+        risks.append("深度回撤")
+    if metrics.percentile_250 > 85:
+        risks.append("估值极高")
+    if metrics.percentile_250 < 15:
+        risks.append("估值极低")
+    
+    if not risks:
+        return "正常"
+    return "、".join(risks)
 
 
 def _parse_ai_response(response: str) -> tuple[str, str, str]:

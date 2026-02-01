@@ -29,7 +29,7 @@ class DeepSeekConfig:
     api_key: str
     model: str = "deepseek-chat"
     base_url: str = "https://api.deepseek.com"
-    max_tokens: int = 4000
+    max_tokens: int = 8000
 
 
 @dataclass
