@@ -49,32 +49,25 @@ class QuantMetrics:
     @property
     def percentile_consensus(self) -> str:
         """
-        多周期分位共识判断
+        多周期分位共识判断（使用默认阈值40/60）
         
         Returns:
             共识状态: "强低估" / "弱低估" / "分歧" / "弱高估" / "强高估"
         """
-        short_low = self.percentile_60 < 40
-        mid_low = self.percentile_250 < 40
-        long_low = self.percentile_500 < 40
+        return get_percentile_consensus(self, 40.0, 60.0)
+    
+    def get_consensus_with_thresholds(self, low_threshold: float, high_threshold: float) -> str:
+        """
+        多周期分位共识判断（自定义阈值）
         
-        short_high = self.percentile_60 > 60
-        mid_high = self.percentile_250 > 60
-        long_high = self.percentile_500 > 60
+        Args:
+            low_threshold: 低估阈值（如30%）
+            high_threshold: 高估阈值（如70%）
         
-        low_count = sum([short_low, mid_low, long_low])
-        high_count = sum([short_high, mid_high, long_high])
-        
-        if low_count == 3:
-            return "强低估"
-        elif low_count >= 2:
-            return "弱低估"
-        elif high_count == 3:
-            return "强高估"
-        elif high_count >= 2:
-            return "弱高估"
-        else:
-            return "分歧"
+        Returns:
+            共识状态
+        """
+        return get_percentile_consensus(self, low_threshold, high_threshold)
     
     @property
     def trend_direction(self) -> str:
@@ -91,6 +84,45 @@ class QuantMetrics:
             return "下降趋势"
         else:
             return "震荡"
+
+
+def get_percentile_consensus(
+    metrics: QuantMetrics, 
+    low_threshold: float = 40.0,
+    high_threshold: float = 60.0
+) -> str:
+    """
+    多周期分位共识判断（支持动态阈值）
+    
+    Args:
+        metrics: 量化指标
+        low_threshold: 低估阈值（如30%用于周期资产）
+        high_threshold: 高估阈值（如70%用于周期资产）
+    
+    Returns:
+        共识状态: "强低估" / "弱低估" / "分歧" / "弱高估" / "强高估"
+    """
+    short_low = metrics.percentile_60 < low_threshold
+    mid_low = metrics.percentile_250 < low_threshold
+    long_low = metrics.percentile_500 < low_threshold
+    
+    short_high = metrics.percentile_60 > high_threshold
+    mid_high = metrics.percentile_250 > high_threshold
+    long_high = metrics.percentile_500 > high_threshold
+    
+    low_count = sum([short_low, mid_low, long_low])
+    high_count = sum([short_high, mid_high, long_high])
+    
+    if low_count == 3:
+        return "强低估"
+    elif low_count >= 2:
+        return "弱低估"
+    elif high_count == 3:
+        return "强高估"
+    elif high_count >= 2:
+        return "弱高估"
+    else:
+        return "分歧"
 
 
 def calculate_percentile(current_price: float, prices: list[float]) -> float:

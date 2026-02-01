@@ -45,21 +45,24 @@ class StrategyResult:
 def evaluate_etf_strategy(
     metrics: QuantMetrics, 
     asset_class: Optional[str] = None,
-    fund_name: str = ""
+    fund_name: str = "",
+    market_drop: Optional[float] = None
 ) -> StrategyResult:
     """
-    评估 ETF 联接基金策略（资产感知版 v3.0）
+    评估 ETF 联接基金策略（资产感知版 v3.1）
     
     核心变化：
     1. 根据 asset_class 获取动态阈值
     2. 使用多周期分位共识验证，避免单一锚定
     3. 动态均线偏离阈值（基于波动率 + 资产类型）
     4. 极端行情熔断机制
+    5. 黄金ETF考虑大盘表现（对冲配置）
     
     Args:
         metrics: 量化指标（包含多周期分位值）
         asset_class: 资产类别 (GOLD_ETF / COMMODITY_CYCLE 等)
         fund_name: 基金名称（用于推断 asset_class）
+        market_drop: 大盘跌幅（负值，用于黄金对冲判断）
     
     Returns:
         StrategyResult 决策结果
@@ -177,11 +180,18 @@ def evaluate_etf_strategy(
     
     # 高估区：暂停定投
     else:
-        # 黄金 ETF 特殊处理：高估不一定暂停
+        # 黄金 ETF 特殊处理：考虑大盘表现
         if asset_class == AssetClass.GOLD_ETF.value:
-            decision = Decision.HOLD
-            confidence = 0.6
-            reasoning = f"250日分位 {percentile:.1f}%，黄金高估但具避险价值，建议观望而非暂停"
+            # 大盘暴跌时，黄金高估体现对冲价值，应正常定投
+            if market_drop is not None and market_drop < -2.0:
+                decision = Decision.NORMAL_BUY
+                confidence = 0.65
+                reasoning = f"250日分位 {percentile:.1f}%，黄金高估但大盘跌 {abs(market_drop):.1f}%，对冲配置价值显现，建议正常定投"
+                warnings.append("🛡️ 大盘下跌时黄金具备对冲价值")
+            else:
+                decision = Decision.HOLD
+                confidence = 0.6
+                reasoning = f"250日分位 {percentile:.1f}%，黄金高估但具避险价值，建议观望而非暂停"
         else:
             decision = Decision.STOP_BUY
             if consensus in ["强高估", "弱高估"]:
@@ -210,7 +220,13 @@ def get_buy_multiplier(
     asset_class: Optional[str] = None
 ) -> float:
     """
-    获取补仓倍数（资产感知版）
+    获取补仓倍数（资产感知版 v3.1）
+    
+    周期资产分批建仓逻辑：
+    - 分位 <5%：2倍
+    - 分位 5-10%：1.5倍
+    - 分位 10-15%：1.2倍
+    - 分位 15-30%：正常
     
     Args:
         percentile: 250日分位值
@@ -223,18 +239,36 @@ def get_buy_multiplier(
     thresholds = get_thresholds(asset_class or "DEFAULT_ETF")
     zones = thresholds.zone_thresholds
     
-    if percentile < zones[0] * 0.5:  # 极端低估
-        base_multiplier = 2.0
-    elif percentile < zones[0]:  # 黄金坑
-        base_multiplier = 1.5
-    elif percentile < zones[1]:  # 低估区
-        base_multiplier = 1.2
-    elif percentile < zones[2]:  # 合理区
-        base_multiplier = 1.0
-    elif percentile < zones[3]:  # 偏高区
-        base_multiplier = 0.5
-    else:  # 高估区
-        base_multiplier = 0.0
+    # 周期资产使用分批建仓逻辑，避免一次性重仓
+    if asset_class == "COMMODITY_CYCLE":
+        if percentile < 5.0:
+            base_multiplier = 2.0
+        elif percentile < 10.0:
+            base_multiplier = 1.5
+        elif percentile < zones[0]:  # 15%
+            base_multiplier = 1.2
+        elif percentile < zones[1]:  # 30%
+            base_multiplier = 1.0
+        elif percentile < zones[2]:  # 70%
+            base_multiplier = 0.8
+        elif percentile < zones[3]:  # 90%
+            base_multiplier = 0.3
+        else:
+            base_multiplier = 0.0
+    else:
+        # 其他资产类型使用标准逻辑
+        if percentile < zones[0] * 0.5:  # 极端低估
+            base_multiplier = 2.0
+        elif percentile < zones[0]:  # 黄金坑
+            base_multiplier = 1.5
+        elif percentile < zones[1]:  # 低估区
+            base_multiplier = 1.2
+        elif percentile < zones[2]:  # 合理区
+            base_multiplier = 1.0
+        elif percentile < zones[3]:  # 偏高区
+            base_multiplier = 0.5
+        else:  # 高估区
+            base_multiplier = 0.0
     
     # 共识调整
     if consensus == "强低估" and base_multiplier > 0:

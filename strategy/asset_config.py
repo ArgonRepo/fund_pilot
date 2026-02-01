@@ -62,21 +62,21 @@ ASSET_THRESHOLDS: dict[AssetClass, StrategyThresholds] = {
     ),
     
     AssetClass.COMMODITY_CYCLE: StrategyThresholds(
-        zone_thresholds=(10.0, 30.0, 70.0, 90.0),  # 周期股需极端区间
+        zone_thresholds=(15.0, 30.0, 70.0, 90.0),  # 黄金坑提高到15%，避免过早加仓
         ma_base_threshold=-4.0,   # 高波动容忍
         circuit_breaker_drop=-10.0,  # 周期股波动大
         circuit_breaker_rise=10.0,
         consensus_low_threshold=30.0,
         consensus_high_threshold=70.0,
         ai_weight=0.5,  # 平衡
-        description="周期商品：强周期高波动，需逆向思维"
+        description="周期商品：强周期高波动，需谨慎建仓"
     ),
     
     AssetClass.BOND_ENHANCED: StrategyThresholds(
         zone_thresholds=(20.0, 40.0, 60.0, 80.0),  # 标准区间
         ma_base_threshold=-1.5,
-        circuit_breaker_drop=-3.0,  # 二级债基波动较大
-        circuit_breaker_rise=3.0,
+        circuit_breaker_drop=-2.0,  # 二级债基调低阈值，避免形同虚设
+        circuit_breaker_rise=2.0,
         consensus_low_threshold=40.0,
         consensus_high_threshold=60.0,
         ai_weight=0.4,  # 债券策略更可靠

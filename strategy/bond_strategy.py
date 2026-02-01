@@ -243,19 +243,32 @@ def evaluate_bond_strategy(
         
         zone = "机会区"
     else:
-        # 正常波动，持有观望
-        decision = Decision.HOLD
-        confidence = 0.6
-        
-        if metrics.daily_change is not None:
-            if metrics.daily_change > 0:
-                reasoning = f"债券今日上涨 {metrics.daily_change:+.2f}%，保持持有即可"
+        # 正常波动：根据资产类型决定默认策略
+        # 二级债基应保持定投节奏，纯债可观望
+        if asset_class == "BOND_ENHANCED":
+            # 二级债基的投资价值在于平滑利率周期风险，应保持定投节奏
+            decision = Decision.NORMAL_BUY
+            confidence = 0.6
+            if metrics.daily_change is not None:
+                if metrics.daily_change > 0:
+                    reasoning = f"二级债基上涨 {metrics.daily_change:+.2f}%，保持定投节奏"
+                else:
+                    reasoning = f"二级债基微跌 {metrics.daily_change:+.2f}%，正是定投好时机"
             else:
-                reasoning = f"债券今日微跌 {metrics.daily_change:+.2f}%，属正常波动无需担忧"
+                reasoning = "二级债基平稳运行，建议保持定投节奏"
+            zone = "正常区"
         else:
-            reasoning = "债券平稳运行，保持持有即可"
-        
-        zone = "正常区"
+            # 纯债或其他类型，可观望等待信号
+            decision = Decision.HOLD
+            confidence = 0.6
+            if metrics.daily_change is not None:
+                if metrics.daily_change > 0:
+                    reasoning = f"债券今日上涨 {metrics.daily_change:+.2f}%，保持持有即可"
+                else:
+                    reasoning = f"债券今日微跌 {metrics.daily_change:+.2f}%，属正常波动无需担忧"
+            else:
+                reasoning = "债券平稳运行，保持持有即可"
+            zone = "正常区"
     
     logger.info(f"债券策略决策: {decision.value} (信号: {signal.signal_type})")
     

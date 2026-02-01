@@ -92,8 +92,13 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         # 6a. 策略主导决策（资产感知）
         asset_class = fund.asset_class or infer_asset_class(fund.type, fund.name)
         
+        # 获取大盘跌幅用于黄金对冲判断
+        market_drop = None
+        if market and market.shanghai_index:
+            market_drop = market.shanghai_index.change
+        
         if fund.type == "ETF_Feeder":
-            strategy_result = evaluate_etf_strategy(metrics, asset_class, fund.name)
+            strategy_result = evaluate_etf_strategy(metrics, asset_class, fund.name, market_drop)
         else:
             strategy_result = evaluate_bond_strategy(metrics, asset_class, fund.name)
         
