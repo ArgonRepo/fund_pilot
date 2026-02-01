@@ -11,7 +11,6 @@ FundPilot-AI 资产分类与动态阈值配置
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 
 class AssetClass(Enum):

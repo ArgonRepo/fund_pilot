@@ -24,12 +24,6 @@ logger = get_logger("bond_strategy")
 # 债券高估预警阈值
 BOND_OVERVALUED_PERCENTILE = 90  # 250日分位 > 90% 时提示风险
 
-# 极端行情熔断阈值
-# 注意：二级债基可配置最高 20% 股票仓位，波动率高于纯债
-# 纯债典型日波动 0.1-0.3%，二级债基可达 1-2%，极端情况 3% 以上
-# 阈值设为 -3% 避免二级债基正常波动频繁触发熔断
-BOND_CIRCUIT_BREAKER_DROP = -3.0   # 单日跌幅超过 3% 暂停决策（适用于二级债基）
-
 
 @dataclass
 class BondSignal:
@@ -46,32 +40,38 @@ def detect_bond_signal(
     asset_class: Optional[str] = None
 ) -> BondSignal:
     """
-    检测债券买入信号（增强版）
+    检测债券买入信号（资产感知版 v3.0）
     
     信号条件（动态阈值）：
-    1. 显著跌破 60 日均线（阈值根据波动率动态调整）
-    2. 单日跌幅超过阈值（阈值根据波动率动态调整）
+    1. 显著跌破 60 日均线（阈值根据波动率 + 资产类型动态调整）
+    2. 单日跌幅超过阈值
     
     预警条件：
     - 250日分位 > 90%：高估预警
     
     Args:
         metrics: 量化指标
+        asset_class: 资产类型 (BOND_ENHANCED / BOND_PURE)
     
     Returns:
         BondSignal 信号
     """
     signals = []
     
-    # 动态阈值计算
-    ma_threshold = get_dynamic_ma_threshold(metrics.volatility_60)
+    # 获取资产类型对应的阈值
+    thresholds = get_thresholds(asset_class or "DEFAULT_BOND")
+    
+    # 动态阈值计算（结合波动率和资产类型）
+    volatility_ma_threshold = get_dynamic_ma_threshold(metrics.volatility_60)
+    ma_threshold = min(volatility_ma_threshold, thresholds.ma_base_threshold)
     drop_normal, drop_severe = get_dynamic_drop_threshold(metrics.volatility_60)
     
     dynamic_thresholds = {
         "ma_threshold": ma_threshold,
         "drop_normal": drop_normal,
         "drop_severe": drop_severe,
-        "volatility_60": metrics.volatility_60
+        "volatility_60": metrics.volatility_60,
+        "asset_class": asset_class or "DEFAULT_BOND"
     }
     
     # 检查是否高估
@@ -128,38 +128,48 @@ def evaluate_bond_strategy(
     fund_name: str = ""
 ) -> StrategyResult:
     """
-    评估债券基金策略（增强版）
+    评估债券基金策略（资产感知版 v3.0）
     
     核心变化：
-    1. 动态阈值：根据品种波动率自动调整
-    2. 多周期分位验证
-    3. 极端行情熔断
+    1. 资产类型感知：区分 BOND_ENHANCED / BOND_PURE
+    2. 动态阈值：根据品种波动率 + 资产类型自动调整
+    3. 多周期分位验证
+    4. 极端行情熔断
     
     防守型策略逻辑：
-    - 极端行情（单日跌 > 2%）：熔断，次日决策
+    - 极端行情：熔断，次日决策
     - 高估区（250日分位 > 90%）：观望，提示风险
     - 正常波动：持有观望
     - 显著跌破均线或单日大跌：定投/补仓机会
     
     Args:
         metrics: 量化指标
+        asset_class: 资产类型 (BOND_ENHANCED / BOND_PURE)
+        fund_name: 基金名称（用于推断 asset_class）
     
     Returns:
         StrategyResult 决策结果
     """
     warnings = []
     
-    # === 熔断检查 ===
-    if metrics.daily_change is not None and metrics.daily_change < BOND_CIRCUIT_BREAKER_DROP:
+    # === 获取资产类型对应的阈值 ===
+    if not asset_class:
+        asset_class = infer_asset_class("Bond", fund_name)
+    
+    thresholds = get_thresholds(asset_class)
+    circuit_breaker = thresholds.circuit_breaker_drop
+    
+    # === 熔断检查（使用资产类型动态阈值）===
+    if metrics.daily_change is not None and metrics.daily_change < circuit_breaker:
         return StrategyResult(
             decision=Decision.HOLD,
             confidence=0.3,
-            reasoning=f"触发熔断：债券单日大跌 {metrics.daily_change:.2f}%，极为罕见，建议冷静观察后决策",
+            reasoning=f"触发熔断：债券单日大跌 {metrics.daily_change:.2f}%（阈值 {circuit_breaker:.1f}%），极为罕见，建议冷静观察后决策",
             zone="熔断",
-            warnings=["⚠️ 债券极端行情：跌幅罕见，可能有重大风险事件"]
+            warnings=[f"⚠️ 债券极端行情：跌幅罕见（{asset_class}），可能有重大风险事件"]
         )
     
-    signal = detect_bond_signal(metrics)
+    signal = detect_bond_signal(metrics, asset_class)
     consensus = metrics.percentile_consensus
     
     # 动态阈值信息

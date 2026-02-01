@@ -81,12 +81,13 @@ def _get_conservative_decision(d1: str, d2: str) -> str:
     
     diff = abs(p1 - p2)
     if diff >= 2:
-        # 分歧较大，选中间值
-        avg = (p1 + p2) // 2
+        # 分歧较大，选中间值（向观望方向取整）
+        avg = (p1 + p2 + 1) // 2  # +1 使其偏向 观望(2) 而非 暂停(1)
         return _priority_to_decision(avg)
     else:
-        # 分歧较小，选较保守的
-        return _priority_to_decision(min(p1, p2))
+        # 分歧较小，偏向观望（priority=2）
+        # 在 暂停(1) 和 正常定投(3) 之间选观望
+        return _priority_to_decision(max(min(p1, p2), 2))
 
 
 def synthesize_decisions(

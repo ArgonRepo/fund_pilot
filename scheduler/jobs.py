@@ -100,12 +100,26 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         logger.info(f"策略决策: {strategy_result.decision.value} (confidence: {strategy_result.confidence:.0%})")
         
         # 6b. AI主导决策（专业化Prompt）
+        # 构建动态阈值用于债券Prompt
+        dynamic_thresholds = None
+        if fund.type == "Bond":
+            from strategy.indicators import get_dynamic_ma_threshold, get_dynamic_drop_threshold
+            from strategy.asset_config import get_thresholds
+            thresholds = get_thresholds(asset_class)
+            drop_normal, drop_severe = get_dynamic_drop_threshold(metrics.volatility_60)
+            dynamic_thresholds = {
+                "ma_threshold": min(get_dynamic_ma_threshold(metrics.volatility_60), thresholds.ma_base_threshold),
+                "drop_normal": drop_normal,
+                "drop_severe": drop_severe
+            }
+        
         ai_result = get_ai_decision(
             fund_config=fund,
             valuation=valuation,
             metrics=metrics,
             holdings=holdings,
-            market=market
+            market=market,
+            dynamic_thresholds=dynamic_thresholds
         )
         
         if ai_result:

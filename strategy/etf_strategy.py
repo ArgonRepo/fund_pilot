@@ -114,8 +114,9 @@ def evaluate_etf_strategy(
     if trend == "下降趋势" and percentile < zones[1]:  # 低于低估阈值
         warnings.append("📉 短期弱于长期，可能仍有下跌空间")
     
-    # === 资产特性提示 ===
-    if asset_class == AssetClass.GOLD_ETF.value:
+    # === 资产特性提示（仅在特定条件下显示）===
+    if asset_class == AssetClass.GOLD_ETF.value and percentile < zones[3]:
+        # 只在非高估区提示，高估区有专门逻辑
         warnings.append("💡 黄金为避险资产，高估不一定暂停，需考虑对冲需求")
     elif asset_class == AssetClass.COMMODITY_CYCLE.value:
         warnings.append("💡 周期资产易长期处于极端分位，需逆向思维")
