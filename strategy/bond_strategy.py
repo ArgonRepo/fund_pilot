@@ -2,8 +2,9 @@
 FundPilot-AI 策略 B - 债券基金防守型策略
 基于回撤幅度和均线乖离进行决策
 
-重要更新 v2.0：
-- 动态阈值：基于品种历史波动率自动调整
+重要更新 v3.0：
+- 资产类型感知：区分 BOND_ENHANCED/BOND_PURE
+- 动态阈值：基于品种历史波动率 + 资产类型自动调整
 - 多周期分位交叉验证
 - 利率环境提示（宏观因子）
 - 极端行情熔断机制
@@ -14,6 +15,7 @@ from typing import Optional
 
 from strategy.indicators import QuantMetrics, get_dynamic_ma_threshold, get_dynamic_drop_threshold
 from strategy.etf_strategy import Decision, StrategyResult
+from strategy.asset_config import get_thresholds, AssetClass, infer_asset_class
 from core.logger import get_logger
 
 logger = get_logger("bond_strategy")
@@ -39,7 +41,10 @@ class BondSignal:
     dynamic_thresholds: Optional[dict] = None  # 使用的动态阈值
 
 
-def detect_bond_signal(metrics: QuantMetrics) -> BondSignal:
+def detect_bond_signal(
+    metrics: QuantMetrics,
+    asset_class: Optional[str] = None
+) -> BondSignal:
     """
     检测债券买入信号（增强版）
     
@@ -117,7 +122,11 @@ def detect_bond_signal(metrics: QuantMetrics) -> BondSignal:
     )
 
 
-def evaluate_bond_strategy(metrics: QuantMetrics) -> StrategyResult:
+def evaluate_bond_strategy(
+    metrics: QuantMetrics,
+    asset_class: Optional[str] = None,
+    fund_name: str = ""
+) -> StrategyResult:
     """
     评估债券基金策略（增强版）
     

@@ -10,12 +10,12 @@ from datetime import datetime
 
 @dataclass
 class FundReport:
-    """单只基金报告数据"""
+    """单只基金报告数据（双轨决策版 v3.0）"""
     fund_name: str
     fund_code: str
     fund_type: str
-    decision: str
-    reasoning: str
+    decision: str                                    # 最终决策（保持兼容）
+    reasoning: str                                   # 最终理由（保持兼容）
     estimate_change: float
     percentile_250: float  # 250 日分位值（主要参考）
     ma_deviation: float
@@ -31,6 +31,16 @@ class FundReport:
     volatility_60: Optional[float] = None          # 60日年化波动率
     percentile_consensus: Optional[str] = None     # 多周期共识
     trend_direction: Optional[str] = None          # 趋势方向
+    # 双轨决策字段 v3.0
+    strategy_decision: Optional[str] = None        # 策略主导决策
+    strategy_confidence: Optional[float] = None    # 策略置信度
+    strategy_reasoning: Optional[str] = None       # 策略理由
+    ai_decision: Optional[str] = None              # AI主导决策
+    ai_confidence: Optional[str] = None            # AI信心度（高/中/低）
+    ai_reasoning: Optional[str] = None             # AI理由
+    final_confidence: Optional[str] = None         # 最终信心度
+    synthesis_method: Optional[str] = None         # 合成方式
+    asset_class: Optional[str] = None              # 资产类型
 
 
 # 决策颜色配置（专业克制）
@@ -95,6 +105,19 @@ def _get_trend_color(trend: str) -> str:
         "震荡": "#757575",       # 灰色（中性）
     }
     return colors.get(trend, "#757575")
+
+
+def _get_asset_class_label(asset_class: str) -> str:
+    """资产类型标签"""
+    labels = {
+        "GOLD_ETF": "黄金避险",
+        "COMMODITY_CYCLE": "周期商品",
+        "BOND_ENHANCED": "固收+",
+        "BOND_PURE": "纯债",
+        "DEFAULT_ETF": "ETF",
+        "DEFAULT_BOND": "债基",
+    }
+    return labels.get(asset_class, asset_class or "N/A")
 
 
 # ============================================================
@@ -432,9 +455,9 @@ FUND_SECTION_TEMPLATE = """<div class="fund-detail">
     <div class="detail-header">
         <div>
             <div class="detail-fund-name">{fund_name}</div>
-            <div class="detail-fund-type">{fund_type} · {fund_code}</div>
+            <div class="detail-fund-type">{fund_type} · {fund_code} · {asset_class_label}</div>
         </div>
-        <span class="detail-decision" style="background: {decision_bg}; color: {decision_color};">{decision}</span>
+        <span class="detail-decision" style="background: {decision_bg}; color: {decision_color};">{decision} ({final_confidence})</span>
     </div>
     
     <div class="analysis-box">
@@ -442,6 +465,29 @@ FUND_SECTION_TEMPLATE = """<div class="fund-detail">
     </div>
     
     {warnings_html}
+    
+    <!-- 双轨决策展示 v3.0 -->
+    <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+        <!-- 策略决策 -->
+        <div style="flex: 1; background: #f8f9fa; border-radius: 8px; padding: 12px; border-left: 3px solid #1976D2;">
+            <div style="font-size: 11px; color: #666; margin-bottom: 6px;">📊 策略决策</div>
+            <div style="font-size: 15px; font-weight: 600; color: {strategy_decision_color};">{strategy_decision}</div>
+            <div style="font-size: 11px; color: #888; margin-top: 4px;">置信度: {strategy_confidence_pct}</div>
+            <div style="font-size: 11px; color: #555; margin-top: 6px; line-height: 1.4;">{strategy_reasoning}</div>
+        </div>
+        <!-- AI决策 -->
+        <div style="flex: 1; background: #f8f9fa; border-radius: 8px; padding: 12px; border-left: 3px solid #7B1FA2;">
+            <div style="font-size: 11px; color: #666; margin-bottom: 6px;">🤖 AI决策</div>
+            <div style="font-size: 15px; font-weight: 600; color: {ai_decision_color};">{ai_decision}</div>
+            <div style="font-size: 11px; color: #888; margin-top: 4px;">信心度: {ai_confidence}</div>
+            <div style="font-size: 11px; color: #555; margin-top: 6px; line-height: 1.4;">{ai_reasoning}</div>
+        </div>
+    </div>
+    
+    <!-- 合成说明 -->
+    <div style="font-size: 11px; color: #888; text-align: center; margin-bottom: 14px;">
+        ⚖️ {synthesis_method}
+    </div>
     
     <div class="metrics-grid">
         <div class="metrics-row">
@@ -573,13 +619,29 @@ def generate_combined_email_html(
         trend = report.trend_direction or "N/A"
         trend_color = _get_trend_color(trend)
         
+        # 双轨决策字段 v3.0
+        strategy_decision = report.strategy_decision or report.decision
+        strategy_confidence = report.strategy_confidence
+        strategy_confidence_pct = f"{strategy_confidence:.0%}" if strategy_confidence else "N/A"
+        strategy_reasoning = report.strategy_reasoning or ""
+        
+        ai_decision = report.ai_decision or "不可用"
+        ai_confidence = report.ai_confidence or "中"
+        ai_reasoning = report.ai_reasoning or ""
+        
+        final_confidence = report.final_confidence or "中"
+        synthesis_method = report.synthesis_method or "策略主导"
+        asset_class_label = _get_asset_class_label(report.asset_class)
+        
         fund_sections.append(FUND_SECTION_TEMPLATE.format(
             fund_name=report.fund_name,
             fund_type=_get_fund_type_label(report.fund_type),
             fund_code=report.fund_code,
+            asset_class_label=asset_class_label,
             decision=report.decision,
             decision_color=_get_decision_color(report.decision),
             decision_bg=_get_decision_bg(report.decision),
+            final_confidence=final_confidence,
             reasoning=report.reasoning,
             estimate_change=_format_change(report.estimate_change),
             change_color=_get_change_color(report.estimate_change),
@@ -593,7 +655,17 @@ def generate_combined_email_html(
             zone=report.zone,
             warnings_html=warnings_html,
             holdings_html=holdings_html,
-            chart_cid=report.chart_cid or f"chart_{i}"
+            chart_cid=report.chart_cid or f"chart_{i}",
+            # 双轨决策字段
+            strategy_decision=strategy_decision,
+            strategy_decision_color=_get_decision_color(strategy_decision),
+            strategy_confidence_pct=strategy_confidence_pct,
+            strategy_reasoning=strategy_reasoning,
+            ai_decision=ai_decision,
+            ai_decision_color=_get_decision_color(ai_decision),
+            ai_confidence=ai_confidence,
+            ai_reasoning=ai_reasoning,
+            synthesis_method=synthesis_method
         ))
     
     return COMBINED_EMAIL_TEMPLATE.format(

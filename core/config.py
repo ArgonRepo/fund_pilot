@@ -20,6 +20,7 @@ class FundConfig:
     name: str
     type: str  # "Bond" 或 "ETF_Feeder"
     underlying_etf: Optional[str] = None  # ETF 联接基金对应的底层 ETF
+    asset_class: Optional[str] = None     # 资产类别: GOLD_ETF / COMMODITY_CYCLE / BOND_ENHANCED 等
 
 
 @dataclass
@@ -68,7 +69,8 @@ def _parse_fund_list(fund_list_str: str) -> list[FundConfig]:
                 code=f["code"],
                 name=f["name"],
                 type=f["type"],
-                underlying_etf=f.get("underlying_etf")
+                underlying_etf=f.get("underlying_etf"),
+                asset_class=f.get("asset_class")  # 资产类别
             )
             for f in funds_data
         ]

@@ -1,6 +1,6 @@
 """
 FundPilot-AI 定时任务定义模块
-定义预警和决策任务（合并报告版）
+定义预警和决策任务（双轨决策版 v3.0）
 """
 
 from dataclasses import dataclass
@@ -14,13 +14,14 @@ from data.fund_valuation import fetch_fund_valuation, FundValuation
 from data.fund_history import get_fund_history, get_recent_nav
 from data.holdings import get_holdings_with_quotes
 from data.market import get_market_context
-from data.http_client import request_stats  # 请求统计
+from data.http_client import request_stats
 from strategy.indicators import calculate_all_metrics, QuantMetrics
 from strategy.etf_strategy import evaluate_etf_strategy
 from strategy.bond_strategy import evaluate_bond_strategy
-from ai.deepseek_client import get_deepseek_client
-from ai.prompt_builder import build_context, get_system_prompt
-from ai.decision_parser import parse_ai_decision
+from strategy.asset_config import infer_asset_class
+from strategy.decision_synthesizer import synthesize_decisions
+from ai.ai_decision import get_ai_decision
+from ai.prompt_builder import build_context
 from visualization.chart import generate_trend_chart
 from notification.email_template import FundReport, generate_combined_email_html, generate_combined_email_subject
 from notification.sender import send_combined_report, send_error_notification
@@ -41,7 +42,14 @@ class FundResult:
 
 def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
     """
-    处理单只基金的决策流程
+    处理单只基金的决策流程（双轨决策版 v3.0）
+    
+    流程:
+    1. 数据采集
+    2. 策略主导决策（资产感知）
+    3. AI主导决策（专业Prompt）
+    4. 决策合成
+    5. 报告生成
     
     Args:
         fund: 基金配置
@@ -73,43 +81,45 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             daily_change=valuation.estimate_change
         )
         
-        # 4. 获取持仓信息 (尝试获取所有基金的重仓股，如债券基、混合基)
+        # 4. 获取持仓信息
         holdings = get_holdings_with_quotes(fund)
         
         # 5. 获取市场环境
         market = get_market_context()
         
-        # 6. 量化策略预判
+        # === 双轨决策架构 ===
+        
+        # 6a. 策略主导决策（资产感知）
+        asset_class = fund.asset_class or infer_asset_class(fund.type, fund.name)
+        
         if fund.type == "ETF_Feeder":
-            strategy_result = evaluate_etf_strategy(metrics)
+            strategy_result = evaluate_etf_strategy(metrics, asset_class, fund.name)
         else:
-            strategy_result = evaluate_bond_strategy(metrics)
+            strategy_result = evaluate_bond_strategy(metrics, asset_class, fund.name)
         
-        # 7. AI 决策
-        ai_decision = None
-        ai_reasoning = strategy_result.reasoning  # 默认使用策略理由
+        logger.info(f"策略决策: {strategy_result.decision.value} (confidence: {strategy_result.confidence:.0%})")
         
-        try:
-            client = get_deepseek_client()
-            context_json = build_context(fund, valuation, metrics, holdings, market)
-            ai_response = client.get_decision(get_system_prompt(), context_json)
-            
-            if ai_response:
-                parsed = parse_ai_decision(ai_response)
-                if parsed.is_valid:
-                    ai_decision = parsed.decision
-                    ai_reasoning = parsed.reasoning
-                    
-        except Exception as e:
-            logger.warning(f"AI 决策失败，使用量化策略: {e}")
-            ai_decision = strategy_result.decision.value
+        # 6b. AI主导决策（专业化Prompt）
+        ai_result = get_ai_decision(
+            fund_config=fund,
+            valuation=valuation,
+            metrics=metrics,
+            holdings=holdings,
+            market=market
+        )
         
-        # 最终决策
-        final_decision = ai_decision or strategy_result.decision.value
+        if ai_result:
+            logger.info(f"AI决策: {ai_result.decision} (信心度: {ai_result.confidence})")
+        else:
+            logger.warning("AI决策失败，将仅使用策略决策")
         
-        # 8. 生成图表
+        # 6c. 决策合成
+        synthesized = synthesize_decisions(strategy_result, ai_result, asset_class)
+        
+        logger.info(f"最终决策: {synthesized.final_decision} ({synthesized.synthesis_method})")
+        
+        # 7. 生成图表
         recent_10 = get_recent_nav(history, 10)
-        # 按日期升序排列
         recent_10_asc = list(reversed(recent_10))
         
         chart_image = generate_trend_chart(
@@ -120,13 +130,15 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             estimate_change=valuation.estimate_change
         )
         
-        # 9. 构建报告数据
+        # 8. 构建报告数据（双轨决策版）
         report = FundReport(
             fund_name=fund.name,
             fund_code=fund.code,
             fund_type=fund.type,
-            decision=final_decision,
-            reasoning=ai_reasoning,
+            # 最终决策（保持兼容）
+            decision=synthesized.final_decision,
+            reasoning=synthesized.final_reasoning,
+            # 基础数据
             estimate_change=valuation.estimate_change,
             percentile_250=metrics.percentile_250,
             ma_deviation=metrics.ma_deviation,
@@ -135,29 +147,40 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             top_gainers=holdings.top_gainers if holdings else None,
             top_losers=holdings.top_losers if holdings else None,
             chart_cid=f"chart_{fund.code}",
-            # 新增字段
-            warnings=strategy_result.warnings,
+            # v2.0 字段
+            warnings=synthesized.warnings,
             percentile_60=metrics.percentile_60,
             percentile_500=metrics.percentile_500,
             volatility_60=metrics.volatility_60,
             percentile_consensus=metrics.percentile_consensus,
-            trend_direction=metrics.trend_direction
+            trend_direction=metrics.trend_direction,
+            # v3.0 双轨决策字段
+            strategy_decision=synthesized.strategy_decision,
+            strategy_confidence=synthesized.strategy_confidence,
+            strategy_reasoning=synthesized.strategy_reasoning,
+            ai_decision=synthesized.ai_decision,
+            ai_confidence=synthesized.ai_confidence,
+            ai_reasoning=synthesized.ai_reasoning,
+            final_confidence=synthesized.final_confidence,
+            synthesis_method=synthesized.synthesis_method,
+            asset_class=asset_class
         )
         
-        # 10. 记录决策日志（复用 context_json）
+        # 9. 记录决策日志
         db = get_database()
+        context_json = build_context(fund, valuation, metrics, holdings, market)
         db.save_decision_log(
             fund_code=fund.code,
             decision_time=datetime.now(),
             estimate_change=valuation.estimate_change,
             percentile_250=metrics.percentile_250,
             ma_60=metrics.ma_60,
-            ai_decision=final_decision,
-            ai_reasoning=ai_reasoning,
+            ai_decision=synthesized.final_decision,
+            ai_reasoning=synthesized.final_reasoning,
             raw_context=context_json
         )
         
-        logger.info(f"基金 {fund.name} 处理完成: {final_decision}")
+        logger.info(f"基金 {fund.name} 处理完成: {synthesized.final_decision}")
         return FundResult(fund=fund, success=True, report=report, chart_image=chart_image)
         
     except Exception as e:
