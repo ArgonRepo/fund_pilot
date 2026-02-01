@@ -18,12 +18,34 @@ from core.logger import get_logger
 
 logger = get_logger("chart")
 
-# 尝试使用中文字体
+import os
+
+# 字体配置
 try:
-    # macOS
-    plt.rcParams['font.sans-serif'] = ['Arial Unicode MS', 'PingFang SC', 'Heiti SC']
-except Exception:
-    pass
+    # 1. 优先使用项目内置字体 (data/fonts/SimHei.ttf)
+    # 请从 https://github.com/StellarCN/scp_zh/raw/master/fonts/SimHei.ttf 下载并放入该目录
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    font_path = os.path.join(project_root, "data", "fonts", "SimHei.ttf")
+    
+    if os.path.exists(font_path):
+        font_prop = FontProperties(fname=font_path)
+        plt.rcParams['font.family'] = font_prop.get_name()
+        # 注册字体以确保生效
+        from matplotlib import font_manager
+        font_manager.fontManager.addfont(font_path)
+        logger.info(f"使用内置字体: {font_path}")
+    else:
+        # 2. 回退到系统字体列表
+        font_list = [
+            'Arial Unicode MS', 'PingFang SC', 'Heiti SC',  # macOS
+            'Microsoft YaHei', 'SimHei',                    # Windows
+            'WenQuanYi Micro Hei', 'Droid Sans Fallback',   # Linux
+            'Noto Sans CJK SC'
+        ]
+        plt.rcParams['font.sans-serif'] = font_list + plt.rcParams['font.sans-serif']
+        logger.info("使用系统字体列表匹配")
+except Exception as e:
+    logger.warning(f"字体配置失败: {e}")
 
 plt.rcParams['axes.unicode_minus'] = False
 
