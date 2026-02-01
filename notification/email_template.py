@@ -87,6 +87,16 @@ def _get_consensus_color(consensus: str) -> str:
     return colors.get(consensus, "#757575")
 
 
+def _get_trend_color(trend: str) -> str:
+    """趋势颜色"""
+    colors = {
+        "上升趋势": "#D32F2F",   # 红色（偏强）
+        "下降趋势": "#388E3C",   # 绿色（偏弱）
+        "震荡": "#757575",       # 灰色（中性）
+    }
+    return colors.get(trend, "#757575")
+
+
 # ============================================================
 # 主邮件模板 - 简洁专业风格
 # ============================================================
@@ -384,8 +394,8 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
                     <td>当前价格相对于近 60 天平均价的偏离。正值 = 高于均线（走强），负值 = 低于均线（走弱）。</td>
                 </tr>
                 <tr>
-                    <td class="term-cell">年化波动率</td>
-                    <td>衡量价格波动的剧烈程度。债券通常 3-5%（稳定），股票型通常 15-25%（波动大）。</td>
+                    <td class="term-cell">趋势方向</td>
+                    <td>基于短期与长期分位差异判断。"上升趋势"表示短期强于长期，"下降趋势"表示短期弱于长期，"震荡"表示无明显方向。</td>
                 </tr>
                 <tr>
                     <td class="term-cell">估值区间</td>
@@ -454,8 +464,8 @@ FUND_SECTION_TEMPLATE = """<div class="fund-detail">
                 <div class="metric-value" style="color: {deviation_color};">{ma_deviation}</div>
             </div>
             <div class="metric-item">
-                <div class="metric-label">年化波动率</div>
-                <div class="metric-value">{volatility}</div>
+                <div class="metric-label">趋势方向</div>
+                <div class="metric-value" style="color: {trend_color};">{trend}</div>
             </div>
             <div class="metric-item">
                 <div class="metric-label">估值区间</div>
@@ -559,8 +569,9 @@ def generate_combined_email_html(
         consensus = report.percentile_consensus or "N/A"
         consensus_color = _get_consensus_color(consensus)
         
-        # 波动率
-        volatility = f"{report.volatility_60:.1f}%" if report.volatility_60 is not None else "N/A"
+        # 趋势方向
+        trend = report.trend_direction or "N/A"
+        trend_color = _get_trend_color(trend)
         
         fund_sections.append(FUND_SECTION_TEMPLATE.format(
             fund_name=report.fund_name,
@@ -577,7 +588,8 @@ def generate_combined_email_html(
             consensus_color=consensus_color,
             ma_deviation=_format_change(report.ma_deviation),
             deviation_color=_get_change_color(report.ma_deviation),
-            volatility=volatility,
+            trend=trend,
+            trend_color=trend_color,
             zone=report.zone,
             warnings_html=warnings_html,
             holdings_html=holdings_html,

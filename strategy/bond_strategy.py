@@ -22,8 +22,11 @@ logger = get_logger("bond_strategy")
 # 债券高估预警阈值
 BOND_OVERVALUED_PERCENTILE = 90  # 250日分位 > 90% 时提示风险
 
-# 极端行情熔断阈值（债券专用，比 ETF 更敏感）
-BOND_CIRCUIT_BREAKER_DROP = -2.0   # 单日跌幅超过 2% 暂停决策
+# 极端行情熔断阈值
+# 注意：二级债基可配置最高 20% 股票仓位，波动率高于纯债
+# 纯债典型日波动 0.1-0.3%，二级债基可达 1-2%，极端情况 3% 以上
+# 阈值设为 -3% 避免二级债基正常波动频繁触发熔断
+BOND_CIRCUIT_BREAKER_DROP = -3.0   # 单日跌幅超过 3% 暂停决策（适用于二级债基）
 
 
 @dataclass
