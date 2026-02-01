@@ -200,7 +200,7 @@ def get_ai_decision(
     # 调用 AI
     try:
         client = get_deepseek_client()
-        response = client.chat(system_prompt, user_message, temperature=0.3, max_tokens=2000)
+        response = client.chat(system_prompt, user_message, temperature=0.3)
         
         # 增强空值检测：检查长度和关键词
         if not response or len(response) < 10:

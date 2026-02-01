@@ -27,7 +27,8 @@ class DeepSeekClient:
             api_key=config.deepseek.api_key,
             base_url=config.deepseek.base_url
         )
-    
+        self.default_max_tokens = config.deepseek.max_tokens
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -38,7 +39,7 @@ class DeepSeekClient:
         system_prompt: str,
         user_message: str,
         temperature: float = 0.3,
-        max_tokens: int = 2000
+        max_tokens: Optional[int] = None
     ) -> Optional[str]:
         """
         发送聊天请求
@@ -53,7 +54,8 @@ class DeepSeekClient:
             AI 回复内容，失败返回 None
         """
         try:
-            logger.info("调用 DeepSeek API...")
+            tokens = max_tokens or self.default_max_tokens
+            logger.info(f"调用 DeepSeek API (max_tokens={tokens})...")
             
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -62,7 +64,7 @@ class DeepSeekClient:
                     {"role": "user", "content": user_message}
                 ],
                 temperature=temperature,
-                max_tokens=max_tokens,
+                max_tokens=tokens,
                 timeout=REQUEST_TIMEOUT
             )
             

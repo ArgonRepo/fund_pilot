@@ -29,6 +29,7 @@ class DeepSeekConfig:
     api_key: str
     model: str = "deepseek-chat"
     base_url: str = "https://api.deepseek.com"
+    max_tokens: int = 4000
 
 
 @dataclass
@@ -91,7 +92,8 @@ def load_config() -> AppConfig:
     deepseek = DeepSeekConfig(
         api_key=os.getenv("DEEPSEEK_API_KEY", ""),
         model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+        max_tokens=int(os.getenv("DEEPSEEK_MAX_TOKENS", "4000"))
     )
     
     # 邮件配置
