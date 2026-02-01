@@ -369,19 +369,15 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
         </div>
         
         <div class="glossary-section">
-            <div class="glossary-title">📌 投资新手必读 - 术语说明</div>
+            <div class="glossary-title">📌 术语说明</div>
             <table class="glossary-table">
                 <tr>
-                    <td class="term-cell">250日分位</td>
-                    <td>当前价格在过去一年内的位置。0%表示一年最低，100%表示一年最高。类似于“历史打折力度”。</td>
-                </tr>
-                <tr>
                     <td class="term-cell">多周期分位</td>
-                    <td>同时查看 60日（3个月）、250日（1年）、500日（2年）的分位值，交叉验证当前是否真的便宜或昂贵。</td>
+                    <td>同时查看 60日（3个月）、250日（1年）、500日（2年）的价格位置，交叉验证当前是否真的便宜或昂贵。</td>
                 </tr>
                 <tr>
                     <td class="term-cell">多周期共识</td>
-                    <td>短中长期分位是否一致。“强低估”表示三个周期都认为当前便宜，信号更可靠；“分歧”表示各周期看法不一致，需谨慎。</td>
+                    <td>短中长期分位是否一致。"强低估"表示三个周期都认为便宜，信号更可靠；"分歧"表示看法不一致，需谨慎。</td>
                 </tr>
                 <tr>
                     <td class="term-cell">60日均线偏离</td>
@@ -389,23 +385,11 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
                 </tr>
                 <tr>
                     <td class="term-cell">年化波动率</td>
-                    <td>衡量价格波动的剧烈程度。债券通常 3-5%（稳定），股票型通常 15-25%（波动大）。波动越大风险越高。</td>
+                    <td>衡量价格波动的剧烈程度。债券通常 3-5%（稳定），股票型通常 15-25%（波动大）。</td>
                 </tr>
                 <tr>
                     <td class="term-cell">估值区间</td>
                     <td>基于分位值划分：黄金坑（0-20%）、低估区（20-40%）、合理区（40-60%）、偏高区（60-80%）、高估区（80-100%）。</td>
-                </tr>
-                <tr>
-                    <td class="term-cell">动态阈值</td>
-                    <td>系统根据品种波动率自动调整判断标准。低波动债券使用更敏感的阈值，高波动 ETF 使用更宽松的阈值。</td>
-                </tr>
-                <tr>
-                    <td class="term-cell">熔断机制</td>
-                    <td>单日波动异常时（股票型±7%、债券型-2%），系统暂停自动决策，等待次日冷静判断。</td>
-                </tr>
-                <tr>
-                    <td class="term-cell">只买不卖</td>
-                    <td>本系统针对 A 类份额设计，赎回费较高（持有 730 天内）。建议长期持有，满 2 年后可考虑再平衡。</td>
                 </tr>
             </table>
         </div>

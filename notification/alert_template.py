@@ -324,27 +324,19 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
         </div>
         
         <div class="glossary-section">
-            <div class="glossary-title">📌 投资新手必读 - 术语说明</div>
+            <div class="glossary-title">📌 术语说明</div>
             <table class="glossary-table">
                 <tr>
                     <td class="term-cell">250日分位</td>
-                    <td>当前价格在过去一年内的位置。0%表示一年最低，100%表示一年最高。类似于“历史打折力度”。</td>
-                </tr>
-                <tr>
-                    <td class="term-cell">多周期分位</td>
-                    <td>同时查看 60日（3个月）、250日（1年）、500日（2年）的分位值，交叉验证当前是否真的便宜或昂贵。</td>
+                    <td>当前价格在过去一年内的位置。0%表示一年最低，100%表示一年最高。类似于"历史打折力度"。</td>
                 </tr>
                 <tr>
                     <td class="term-cell">60日均线偏离</td>
                     <td>当前价格相对于近 60 天平均价的偏离。正值 = 高于均线（走强），负值 = 低于均线（走弱）。</td>
                 </tr>
                 <tr>
-                    <td class="term-cell">60日最大回撒</td>
+                    <td class="term-cell">60日最大回撤</td>
                     <td>近 60 个交易日内，从最高点回落的最大幅度，反映近期最大可能亏损。</td>
-                </tr>
-                <tr>
-                    <td class="term-cell">年化波动率</td>
-                    <td>衡量价格波动的剧烈程度。债券通常 3-5%（稳定），股票型通常 15-25%（波动大）。波动越大风险越高。</td>
                 </tr>
                 <tr>
                     <td class="term-cell">估值区间</td>
