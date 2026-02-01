@@ -155,7 +155,8 @@ sudo systemctl start fundpilot
 ```bash
 sudo systemctl status fundpilot   # 查看状态
 sudo systemctl restart fundpilot  # 重启服务
-sudo journalctl -u fundpilot -f   # 查看日志
+sudo journalctl -u fundpilot -f   # 查看实时日志
+tail -f logs/fundpilot.log        # 查看日志文件 (推荐)
 ```
 
 ---
