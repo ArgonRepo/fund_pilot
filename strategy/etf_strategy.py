@@ -86,7 +86,7 @@ def evaluate_etf_strategy(
                 confidence=0.3,
                 reasoning=f"触发熔断：单日大跌 {metrics.daily_change:.1f}%，建议冷静观察，次日再决策",
                 zone="熔断",
-                warnings=["⚠️ 极端行情熔断：跌幅过大，暂停决策"]
+                warnings=["极端行情熔断：跌幅过大，暂停决策"]
             )
         if metrics.daily_change > thresholds.circuit_breaker_rise:
             return StrategyResult(
@@ -94,7 +94,7 @@ def evaluate_etf_strategy(
                 confidence=0.3,
                 reasoning=f"触发熔断：单日大涨 {metrics.daily_change:.1f}%，建议冷静观察，次日再决策",
                 zone="熔断",
-                warnings=["⚠️ 极端行情熔断：涨幅过大，暂停决策"]
+                warnings=["极端行情熔断：涨幅过大，暂停决策"]
             )
     
     # === 多周期分位共识 ===
@@ -109,20 +109,20 @@ def evaluate_etf_strategy(
     
     # 共识冲突警告
     if consensus == "分歧":
-        warnings.append(f"⚠️ 多周期分位分歧：60日={metrics.percentile_60:.0f}%，250日={metrics.percentile_250:.0f}%，500日={metrics.percentile_500:.0f}%")
+        warnings.append(f"多周期分位分歧：60日={metrics.percentile_60:.0f}%，250日={metrics.percentile_250:.0f}%，500日={metrics.percentile_500:.0f}%")
     
     # 趋势警告
     if trend == "上升趋势" and percentile > zones[2]:  # 高于高估阈值
-        warnings.append("📈 短期强于长期，可能处于趋势高点")
+        warnings.append("短期强于长期，可能处于趋势高点")
     if trend == "下降趋势" and percentile < zones[1]:  # 低于低估阈值
-        warnings.append("📉 短期弱于长期，可能仍有下跌空间")
+        warnings.append("短期弱于长期，可能仍有下跌空间")
     
     # === 资产特性提示（仅在特定条件下显示）===
     if asset_class == AssetClass.GOLD_ETF.value and percentile < zones[3]:
         # 只在非高估区提示，高估区有专门逻辑
-        warnings.append("💡 黄金为避险资产，高估不一定暂停，需考虑对冲需求")
+        warnings.append("黄金为避险资产，高估不一定暂停，需考虑对冲需求")
     elif asset_class == AssetClass.COMMODITY_CYCLE.value:
-        warnings.append("💡 周期资产易长期处于极端分位，需逆向思维")
+        warnings.append("周期资产易长期处于极端分位，需逆向思维")
     
     # === 决策逻辑（使用动态阈值）===
     decision: Decision
@@ -140,7 +140,7 @@ def evaluate_etf_strategy(
             decision = Decision.NORMAL_BUY
             confidence = 0.6
             reasoning = f"250日分位 {percentile:.1f}% 处于黄金坑，但多周期「{consensus}」，建议正常定投观察"
-            warnings.append("⚠️ 长期分位偏高，短期低估可能是假象")
+            warnings.append("长期分位偏高，短期低估可能是假象")
     
     # 低估区：正常定投
     elif percentile < zones[1]:  # 动态低估阈值
@@ -187,7 +187,7 @@ def evaluate_etf_strategy(
                 decision = Decision.NORMAL_BUY
                 confidence = 0.65
                 reasoning = f"250日分位 {percentile:.1f}%，黄金高估但大盘跌 {abs(market_drop):.1f}%，对冲配置价值显现，建议正常定投"
-                warnings.append("🛡️ 大盘下跌时黄金具备对冲价值")
+                warnings.append("大盘下跌时黄金具备对冲价值")
             else:
                 decision = Decision.HOLD
                 confidence = 0.6
@@ -201,7 +201,7 @@ def evaluate_etf_strategy(
                 confidence = 0.8
                 reasoning = f"250日分位 {percentile:.1f}%，处于{zone}，建议暂停定投积攒弹药"
                 if consensus == "分歧":
-                    warnings.append("📊 多周期存在分歧，可小幅减少暂停力度")
+                    warnings.append("多周期存在分歧，可小幅减少暂停力度")
     
     logger.info(f"ETF策略决策: {decision.value} (资产: {asset_class}, 分位: {percentile:.1f}%, 共识: {consensus}, 区间: {zone})")
     

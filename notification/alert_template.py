@@ -90,30 +90,23 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
             background: #fff;
         }}
         
-        /* 头部 */
+        /* 头部 - 与决策邮件风格统一 */
         .header {{
-            padding: 28px 24px 20px;
-            border-bottom: 1px solid #eee;
+            background: #2c3e50;
+            color: #ffffff;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }}
-        .header-badge {{
-            display: inline-block;
-            background: #FFF3E0;
-            color: #E65100;
-            font-size: 11px;
-            font-weight: 500;
-            padding: 3px 8px;
-            border-radius: 3px;
-            margin-bottom: 8px;
-        }}
-        .header-title {{
-            font-size: 18px;
+        .header-brand {{
+            font-size: 16px;
             font-weight: 600;
-            color: #1a1a1a;
-            margin-bottom: 4px;
+            letter-spacing: 1px;
         }}
-        .header-meta {{
+        .header-date {{
             font-size: 12px;
-            color: #888;
+            color: rgba(255,255,255,0.7);
         }}
         
         /* 市场概况 */
@@ -269,16 +262,18 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
 </head>
 <body>
     <div class="email-container">
+        <div class="header">
+            <div class="header-brand">FundPilot 盘中快报</div>
+            <div class="header-date">{date_str}</div>
+        </div>
         <div class="market-section">
             <div class="market-grid">
                 <div class="market-item" style="margin-right: 8px;">
-                    <div class="market-name">上证指数</div>
-                    <div class="market-price">{shanghai_price}</div>
+                    <div class="market-name">上证指数 ({shanghai_price})</div>
                     <div class="market-change" style="color: {shanghai_color};">{shanghai_change}</div>
                 </div>
                 <div class="market-item">
-                    <div class="market-name">沪深300</div>
-                    <div class="market-price">{hs300_price}</div>
+                    <div class="market-name">沪深300 ({hs300_price})</div>
                     <div class="market-change" style="color: {hs300_color};">{hs300_change}</div>
                 </div>
             </div>
@@ -324,7 +319,7 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
         </div>
         
         <div class="glossary-section">
-            <div class="glossary-title">📌 术语说明</div>
+            <div class="glossary-title">术语说明</div>
             <table class="glossary-table">
                 <tr>
                     <td class="term-cell">250日分位</td>
@@ -346,7 +341,7 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
         </div>
         
         <div class="footer">
-            <div class="footer-note">📊 完整决策报告将于 14:45 发送</div>
+            <div class="footer-note">完整决策报告将于 14:45 发送</div>
             <div class="footer-text">FundPilot · 量化定投决策系统</div>
         </div>
     </div>

@@ -114,7 +114,7 @@ def synthesize_decisions(
     # AI 决策失败时，降级为仅策略决策
     if ai_result is None:
         logger.warning(f"AI决策失败，降级为仅策略决策: {strategy_decision}")
-        warnings.append("⚠️ AI决策不可用，仅参考策略决策")
+        warnings.append("AI决策不可用，仅参考策略决策")
         
         return SynthesizedDecision(
             strategy_decision=strategy_decision,
@@ -162,7 +162,7 @@ def synthesize_decisions(
             combined_confidence = 0.5  # 降低信心
             synthesis_method = "分歧保守处理"
             final_reasoning = f"策略建议「{strategy_decision}」与AI建议「{ai_decision}」分歧较大，保守建议「{final_decision}」"
-            warnings.append(f"⚠️ 策略({strategy_decision})与AI({ai_decision})存在分歧")
+            warnings.append(f"策略({strategy_decision})与AI({ai_decision})存在分歧")
             
             logger.info(f"极端分歧: 策略={strategy_decision}, AI={ai_decision}, 最终保守={final_decision}")
         else:

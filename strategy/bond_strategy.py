@@ -166,7 +166,7 @@ def evaluate_bond_strategy(
             confidence=0.3,
             reasoning=f"触发熔断：债券单日大跌 {metrics.daily_change:.2f}%（阈值 {circuit_breaker:.1f}%），极为罕见，建议冷静观察后决策",
             zone="熔断",
-            warnings=[f"⚠️ 债券极端行情：跌幅罕见（{asset_class}），可能有重大风险事件"]
+            warnings=[f"债券极端行情：跌幅罕见（{asset_class}），可能有重大风险事件"]
         )
     
     signal = detect_bond_signal(metrics, asset_class)
@@ -176,7 +176,7 @@ def evaluate_bond_strategy(
     if signal.dynamic_thresholds:
         thresholds = signal.dynamic_thresholds
         warnings.append(
-            f"📊 动态阈值：均线偏离 {thresholds['ma_threshold']:.2f}%，"
+            f"动态阈值：均线偏离 {thresholds['ma_threshold']:.2f}%，"
             f"大跌 {thresholds['drop_normal']:.2f}%/{thresholds['drop_severe']:.2f}%"
             f"（基于 {thresholds['volatility_60']:.1f}% 年化波动率）"
         )
@@ -184,16 +184,16 @@ def evaluate_bond_strategy(
     # 多周期分位警告
     if consensus == "分歧":
         warnings.append(
-            f"⚠️ 多周期分位分歧：60日={metrics.percentile_60:.0f}%，"
+            f"多周期分位分歧：60日={metrics.percentile_60:.0f}%，"
             f"250日={metrics.percentile_250:.0f}%，500日={metrics.percentile_500:.0f}%"
         )
     
     # 趋势警告
     trend = metrics.trend_direction
     if trend == "上升趋势":
-        warnings.append("📈 债券短期走强，利率可能处于下行周期")
+        warnings.append("债券短期走强，利率可能处于下行周期")
     if trend == "下降趋势":
-        warnings.append("📉 债券短期走弱，需关注利率上行风险")
+        warnings.append("债券短期走弱，需关注利率上行风险")
     
     # === 高估区处理 ===
     if signal.is_overvalued:
@@ -202,7 +202,7 @@ def evaluate_bond_strategy(
             decision = Decision.NORMAL_BUY
             confidence = 0.5
             reasoning = f"虽有{signal.signal_type}信号（强度 {signal.strength:.0%}），但250日分位 {metrics.percentile_250:.0f}% 偏高，建议小额定投"
-            warnings.append("⚠️ 高估区补仓需控制仓位，建议减半")
+            warnings.append("高估区补仓需控制仓位，建议减半")
         else:
             decision = Decision.HOLD
             confidence = 0.7

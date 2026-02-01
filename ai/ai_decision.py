@@ -261,41 +261,44 @@ def _parse_ai_response(response: str) -> tuple[str, str, str]:
                     decision = keyword
                     break
     
-    # 解析信心度
+    # 解析信心度 - 支持百分比格式 (如 "85%") 和文本格式 (如 "高")
     if "【信心度】" in response:
         parts = response.split("【信心度】")
         if len(parts) > 1:
             conf_part = parts[1].split("【")[0].strip()
-            for level in ["高", "中", "低"]:
-                if level in conf_part:
-                    confidence = level
-                    break
+            # 先检查百分比格式
+            import re
+            pct_match = re.search(r'(\d{1,3})\s*%', conf_part)
+            if pct_match:
+                confidence = f"{pct_match.group(1)}%"
+            else:
+                # 回退到文本格式
+                for level in ["高", "中", "低"]:
+                    if level in conf_part:
+                        confidence = level
+                        break
     
     # 解析理由
     for key in ["【核心理由】", "【理由】"]:
         if key in response:
             parts = response.split(key)
             if len(parts) > 1:
-                # 尝试提取到下一个标签前，或者直接取剩余全部
-                # 考虑到 DeepSeek 可能不输出结尾标签，我们取剩余内容
-                # 但如果有后续标签（如【风险】），则截断
-                content_part = parts[1]
-                if "【" in content_part:
-                     # 只有当后面紧跟的是已知的标准标签时才截断，防止截断正文中的括号
-                     # 这里简单处理：如果遇到下一个【，且看起来像标签（短），则截断
-                     # 为保险起见，我们假设标准输出格式是最后是核心理由，或者是分点列出的
-                     # 如果后面有【，尝试split
-                     pass 
+                reasoning = parts[1].strip()
                 
-                # 这里的 split("【")[0] 可能会误伤正文中的【】，但概率较低
-                # 更稳健的做法是：
-                reasoning = content_part.strip()
-                # 如果后续还有其他标签（例如用户未严格遵循格式），尝试清理
-                # 但现在的 prompts 把核心理由放在最后，所以通常是安全的
+                # 移除开头的冒号和空白
+                reasoning = re.sub(r'^[：:]\s*', '', reasoning)
                 
-                # 这是一个简化的处理，移除可能存在的尾部标签
+                # 如果后续还有其他标签，截断
                 if "【" in reasoning:
                     reasoning = reasoning.split("【")[0].strip()
+                
+                # 规范化每行前导空格，修复①②③对齐问题
+                lines = reasoning.split('\n')
+                normalized_lines = []
+                for line in lines:
+                    # 去除每行开头的空格，保持①②③对齐
+                    normalized_lines.append(line.strip())
+                reasoning = '\n'.join(normalized_lines)
                 
                 break
     
