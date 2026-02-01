@@ -153,35 +153,58 @@ def _confidence_to_pct(conf: str) -> str:
 
 
 # ============================================================
-# 回测统计模板
+# 回测统计模板 (v2.1 与邮件风格一致)
 # ============================================================
 
 BACKTEST_SECTION_TEMPLATE = """
-<div class="section" style="background: #f8fafc;">
-    <div class="section-title">📊 策略回测 (近30次统计)</div>
-    <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">
-        T+5 收益验证 | ✅成功 ❌失误 ⏳待验证
-    </div>
+<div class="section">
+    <div class="section-title">📊 策略效果验证</div>
+    <p style="font-size: 13px; color: #7f8c8d; margin: 0 0 16px 0;">
+        追踪历史决策在 3 个交易日后的实际表现，验证策略有效性
+    </p>
     {fund_backtest_rows}
 </div>
 """
 
 FUND_BACKTEST_ROW_TEMPLATE = """
-<div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; margin-bottom: 10px;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span style="font-weight: 600; font-size: 14px;">{fund_name}</span>
-        <span style="font-size: 13px;">
-            准确率: <strong style="color: {accuracy_color};">{accuracy:.0f}%</strong> ({success}/{total})
-            | 平均T+5: <strong style="color: {avg_return_color};">{avg_return:+.2f}%</strong>
-        </span>
+<div class="fund-card" style="margin-bottom: 16px;">
+    <div class="fund-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span class="fund-name">{fund_name}</span>
+        <div>
+            <span style="font-size: 13px; color: #7f8c8d;">策略准确率 </span>
+            <span style="font-size: 20px; font-weight: 700; color: {accuracy_color};">{accuracy:.0f}%</span>
+            <span style="font-size: 12px; color: #95a5a6;"> ({success}/{total}次)</span>
+        </div>
     </div>
-    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
-        {decision_tags}
+    <div class="fund-body" style="padding: 12px 16px;">
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th style="width: 90px;">决策日期</th>
+                    <th style="width: 100px;">当日决策</th>
+                    <th style="width: 90px; text-align: right;">3日后收益</th>
+                    <th style="width: 60px; text-align: center;">验证</th>
+                </tr>
+            </thead>
+            <tbody>
+                {decision_rows}
+            </tbody>
+        </table>
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #ecf0f1; font-size: 13px; color: #7f8c8d; text-align: right;">
+            平均 3 日收益: <strong style="color: {avg_return_color};">{avg_return:+.2f}%</strong>
+        </div>
     </div>
 </div>
 """
 
-DECISION_TAG_TEMPLATE = """<span style="display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; background: {bg_color}; color: {text_color};" title="{tooltip}">{emoji} {return_str}</span>"""
+DECISION_ROW_TEMPLATE = """
+<tr>
+    <td>{date}</td>
+    <td><span class="decision-tag" style="background: {decision_bg}; color: {decision_color};">{decision}</span></td>
+    <td style="text-align: right; font-weight: 600; color: {return_color};">{return_str}</td>
+    <td style="text-align: center;">{result_emoji}</td>
+</tr>
+"""
 
 
 # ============================================================
@@ -727,42 +750,57 @@ def generate_combined_email_html(
 
 
 def _generate_backtest_section(reports: list[FundReport]) -> str:
-    """生成回测统计区块"""
+    """生成回测统计区块（表格式设计 v2.0）"""
     from core.database import get_database
     
     db = get_database()
     fund_rows = []
     
+    # 决策类型样式配置
+    DECISION_STYLES = {
+        "双倍补仓": {"bg": "#dcfce7", "color": "#166534"},
+        "正常定投": {"bg": "#dbeafe", "color": "#1e40af"},
+        "暂停定投": {"bg": "#fee2e2", "color": "#991b1b"},
+        "观望": {"bg": "#f1f5f9", "color": "#64748b"},
+    }
+    
     for report in reports:
         # 获取统计数据
         stats = db.get_fund_backtest_stats(report.fund_code, limit=30)
-        decisions = db.get_recent_decisions(report.fund_code, limit=20)
+        decisions = db.get_recent_decisions(report.fund_code, limit=10)  # 只显示最近10条
         
         # 如果没有足够数据，跳过
         if stats["total"] < 3:
             continue
         
-        # 生成决策标签
-        tags = []
-        for d in decisions[:20]:  # 最近20条
+        # 生成决策表格行
+        decision_rows = []
+        for d in decisions:
+            decision_type = d["ai_decision"]
+            style = DECISION_STYLES.get(decision_type, DECISION_STYLES["观望"])
+            
+            # 日期格式化
+            date_str = d["decision_time"][:10] if d["decision_time"] else "-"
+            
             if d["is_validated"]:
                 ret = d["actual_return_t5"] or 0
                 success = d["is_success"]
-                emoji = "✅" if success else "❌"
-                bg = "#d1fae5" if success else "#fee2e2"
-                text = "#065f46" if success else "#991b1b"
+                return_str = f"{ret:+.2f}%"
+                return_color = "#16a34a" if ret >= 0 else "#dc2626"
+                result_emoji = "✅" if success else "❌"
             else:
-                ret = 0
-                emoji = "⏳"
-                bg = "#e2e8f0"
-                text = "#64748b"
+                return_str = "待验证"
+                return_color = "#94a3b8"
+                result_emoji = "⏳"
             
-            tags.append(DECISION_TAG_TEMPLATE.format(
-                bg_color=bg,
-                text_color=text,
-                emoji=emoji,
-                return_str=f"{ret:+.1f}%" if d["is_validated"] else "待验",
-                tooltip=f"{d['ai_decision']} ({d['decision_time'][:10]})"
+            decision_rows.append(DECISION_ROW_TEMPLATE.format(
+                date=date_str,
+                decision=decision_type,
+                decision_bg=style["bg"],
+                decision_color=style["color"],
+                return_str=return_str,
+                return_color=return_color,
+                result_emoji=result_emoji
             ))
         
         # 准确率颜色
@@ -786,7 +824,7 @@ def _generate_backtest_section(reports: list[FundReport]) -> str:
             total=stats["total"],
             avg_return=avg_ret,
             avg_return_color=avg_color,
-            decision_tags="".join(tags)
+            decision_rows="".join(decision_rows)
         ))
     
     # 如果没有足够数据，返回空字符串

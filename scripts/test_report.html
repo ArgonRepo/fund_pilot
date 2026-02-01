@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f5f6fa;
+            color: #2c3e50;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        .container {
+            max-width: 680px;
+            margin: 0 auto;
+            background: #ffffff;
+        }
+        
+        /* Header */
+        .header {
+            background: #2c3e50;
+            color: #ffffff;
+            padding: 12px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-brand {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+        .header-date {
+            font-size: 14px;
+            opacity: 0.85;
+        }
+        
+        /* Section */
+        .section {
+            padding: 20px 24px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        .section:last-child {
+            border-bottom: none;
+        }
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 12px;
+            padding-bottom: 6px;
+            border-bottom: 2px solid #3498db;
+            display: inline-block;
+        }
+        
+        /* Summary Table */
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .summary-table th {
+            text-align: left;
+            padding: 10px 8px;
+            background: #f8f9fa;
+            font-weight: 500;
+            color: #7f8c8d;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        .summary-table td {
+            padding: 12px 8px;
+            border-bottom: 1px solid #f4f6f6;
+        }
+        .summary-table tr:last-child td {
+            border-bottom: none;
+        }
+        .decision-tag {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        /* Fund Card */
+        .fund-card {
+            background: #ffffff;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        .fund-card + .fund-card {
+            margin-top: 24px;
+            border-top: 3px solid #3498db;
+        }
+        .fund-header {
+            background: #f1f5f9;
+            padding: 12px 16px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .fund-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1e293b;
+        }
+        .fund-meta {
+            font-size: 12px;
+            color: #64748b;
+            font-weight: 400;
+            margin-left: 4px;
+        }
+        .fund-body {
+            padding: 16px;
+        }
+        
+        /* Metrics Grid */
+        .metrics-grid {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .metric-item {
+            flex: 1;
+            min-width: 80px;
+            text-align: center;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .metric-label {
+            font-size: 11px;
+            color: #64748b;
+            margin-bottom: 2px;
+        }
+        .metric-value {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        /* Conclusion Box */
+        .conclusion-box {
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            border-radius: 6px;
+            padding: 12px 14px;
+            margin-bottom: 12px;
+        }
+        .conclusion-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+        .conclusion-label {
+            font-size: 12px;
+            color: #0369a1;
+            font-weight: 500;
+        }
+        .conclusion-decision {
+            font-size: 15px;
+            font-weight: 700;
+        }
+        .conclusion-reason {
+            font-size: 13px;
+            color: #334155;
+            line-height: 1.5;
+        }
+        
+        /* Process Section */
+        .process-section {
+            margin-bottom: 12px;
+        }
+        .process-title {
+            font-size: 12px;
+            color: #64748b;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .process-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .process-card {
+            background: #fafafa;
+            border: 1px solid #e2e8f0;
+            border-radius: 4px;
+            padding: 10px 12px;
+        }
+        .process-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        .process-card-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #475569;
+        }
+        .process-card-tag {
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: 500;
+        }
+        .process-card-reason {
+            font-size: 12px;
+            color: #475569;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+        
+        /* Chart */
+        .chart-container {
+            margin: 12px 0;
+            border: 1px solid #e5e8ec;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .chart-container img {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+        
+        /* Warning */
+        .warning-box {
+            background: #fef3c7;
+            border: 1px solid #fcd34d;
+            border-radius: 4px;
+            padding: 10px 12px;
+            margin-top: 12px;
+            font-size: 12px;
+            color: #92400e;
+            line-height: 1.5;
+        }
+        .warning-box ol {
+            margin: 0;
+            padding-left: 18px;
+        }
+        .warning-box li {
+            margin: 2px 0;
+        }
+        
+        /* Glossary */
+        .glossary-section {
+            background: #f8f9fa;
+            padding: 16px 24px;
+        }
+        .glossary-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .glossary-grid {
+            display: grid;
+            gap: 8px;
+        }
+        .glossary-item {
+            display: flex;
+            gap: 8px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .glossary-term {
+            font-weight: 600;
+            color: #2c3e50;
+            min-width: 60px;
+            flex-shrink: 0;
+        }
+        .glossary-def {
+            color: #64748b;
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 14px 24px;
+            font-size: 11px;
+            color: #94a3b8;
+            background: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-brand">FundPilot 定投助手</div>
+            <div class="header-date">2026年2月1日 周日</div>
+        </div>
+        
+        <!-- Summary Section -->
+        <div class="section">
+            <div class="section-title">今日决策总览</div>
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>基金</th>
+                        <th>今日涨跌</th>
+                        <th>估值水平</th>
+                        <th style="text-align: right;">操作建议</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+    <td>
+        <div style="font-weight: 500;">华安黄金ETF联接A</div>
+        <div style="font-size: 12px; color: #94a3b8;">000216</div>
+    </td>
+    <td style="color: #c0392b; font-weight: 500;">+0.52%</td>
+    <td style="color: #27ae60;">低估</td>
+    <td style="text-align: right;">
+        <span class="decision-tag" style="background: #d5f5e3; color: #27ae60;">正常定投</span>
+    </td>
+</tr><tr>
+    <td>
+        <div style="font-weight: 500;">南方有色金属ETF联接A</div>
+        <div style="font-size: 12px; color: #94a3b8;">004432</div>
+    </td>
+    <td style="color: #c0392b; font-weight: 500;">+0.52%</td>
+    <td style="color: #27ae60;">低估</td>
+    <td style="text-align: right;">
+        <span class="decision-tag" style="background: #d5f5e3; color: #27ae60;">正常定投</span>
+    </td>
+</tr><tr>
+    <td>
+        <div style="font-weight: 500;">招商双债增强A</div>
+        <div style="font-size: 12px; color: #94a3b8;">000000</div>
+    </td>
+    <td style="color: #c0392b; font-weight: 500;">+0.52%</td>
+    <td style="color: #27ae60;">低估</td>
+    <td style="text-align: right;">
+        <span class="decision-tag" style="background: #d5f5e3; color: #27ae60;">正常定投</span>
+    </td>
+</tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Fund Details -->
+        <div class="section">
+            <div class="section-title">基金分析详情</div>
+            <div class="fund-card">
+    <div class="fund-header">
+        <div class="fund-name">华安黄金ETF联接A <span class="fund-meta">(000216 · ETF联接 · 黄金)</span></div>
+    </div>
+    <div class="fund-body">
+        <!-- Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-item">
+                <div class="metric-label">今日涨跌</div>
+                <div class="metric-value" style="color: #c0392b;">+0.52%</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">估值分位</div>
+                <div class="metric-value" style="color: #27ae60;">35%</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">均线偏离</div>
+                <div class="metric-value">-1.20%</div>
+            </div>
+        </div>
+        
+        <!-- Conclusion -->
+        <div class="conclusion-box">
+            <div class="conclusion-header">
+                <span class="conclusion-label">综合建议</span>
+                <span class="conclusion-decision" style="color: #27ae60;">正常定投</span>
+                <span style="font-size: 12px; color: #64748b; margin-left: 8px;">建议倍数: <strong style="color: #0369a1;">1.2x</strong></span>
+            </div>
+            <div class="conclusion-reason">这是今日的模拟决策，用于展示邮件主体内容...</div>
+        </div>
+        
+        <!-- Decision Process -->
+        <div class="process-section">
+            <div class="process-title">决策过程</div>
+            <div class="process-grid">
+                <div class="process-card">
+                    <div class="process-card-header">
+                        <span class="process-card-title">量化策略 (置信度: 80%)</span>
+                        <span class="process-card-tag" style="background: #d5f5e3; color: #27ae60;">正常定投</span>
+                    </div>
+                    <div class="process-card-reason">分位低估</div>
+                </div>
+                <div class="process-card">
+                    <div class="process-card-header">
+                        <span class="process-card-title">深度分析 (置信度: 80%)</span>
+                        <span class="process-card-tag" style="background: #d5f5e3; color: #27ae60;">正常定投</span>
+                    </div>
+                    <div class="process-card-reason">基本面良好</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Chart -->
+        <div class="chart-container">
+            <img src="cid:chart_0" alt="走势图">
+        </div>
+        
+        <!-- Warning -->
+        <div class="warning-box">趋势向下</div>
+    </div>
+</div><div class="fund-card">
+    <div class="fund-header">
+        <div class="fund-name">南方有色金属ETF联接A <span class="fund-meta">(004432 · ETF联接 · 周期)</span></div>
+    </div>
+    <div class="fund-body">
+        <!-- Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-item">
+                <div class="metric-label">今日涨跌</div>
+                <div class="metric-value" style="color: #c0392b;">+0.52%</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">估值分位</div>
+                <div class="metric-value" style="color: #27ae60;">35%</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">均线偏离</div>
+                <div class="metric-value">-1.20%</div>
+            </div>
+        </div>
+        
+        <!-- Conclusion -->
+        <div class="conclusion-box">
+            <div class="conclusion-header">
+                <span class="conclusion-label">综合建议</span>
+                <span class="conclusion-decision" style="color: #27ae60;">正常定投</span>
+                <span style="font-size: 12px; color: #64748b; margin-left: 8px;">建议倍数: <strong style="color: #0369a1;">1.2x</strong></span>
+            </div>
+            <div class="conclusion-reason">这是今日的模拟决策，用于展示邮件主体内容...</div>
+        </div>
+        
+        <!-- Decision Process -->
+        <div class="process-section">
+            <div class="process-title">决策过程</div>
+            <div class="process-grid">
+                <div class="process-card">
+                    <div class="process-card-header">
+                        <span class="process-card-title">量化策略 (置信度: 80%)</span>
+                        <span class="process-card-tag" style="background: #d5f5e3; color: #27ae60;">正常定投</span>
+                    </div>
+                    <div class="process-card-reason">分位低估</div>
+                </div>
+                <div class="process-card">
+                    <div class="process-card-header">
+                        <span class="process-card-title">深度分析 (置信度: 80%)</span>
+                        <span class="process-card-tag" style="background: #d5f5e3; color: #27ae60;">正常定投</span>
+                    </div>
+                    <div class="process-card-reason">基本面良好</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Chart -->
+        <div class="chart-container">
+            <img src="cid:chart_1" alt="走势图">
+        </div>
+        
+        <!-- Warning -->
+        <div class="warning-box">趋势向下</div>
+    </div>
+</div><div class="fund-card">
+    <div class="fund-header">
+        <div class="fund-name">招商双债增强A <span class="fund-meta">(000000 · 债券型 · 固收+)</span></div>
+    </div>
+    <div class="fund-body">
+        <!-- Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-item">
+                <div class="metric-label">今日涨跌</div>
+                <div class="metric-value" style="color: #c0392b;">+0.52%</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">估值分位</div>
+                <div class="metric-value" style="color: #27ae60;">35%</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">均线偏离</div>
+                <div class="metric-value">-1.20%</div>
+            </div>
+        </div>
+        
+        <!-- Conclusion -->
+        <div class="conclusion-box">
+            <div class="conclusion-header">
+                <span class="conclusion-label">综合建议</span>
+                <span class="conclusion-decision" style="color: #27ae60;">正常定投</span>
+                <span style="font-size: 12px; color: #64748b; margin-left: 8px;">建议倍数: <strong style="color: #0369a1;">1.2x</strong></span>
+            </div>
+            <div class="conclusion-reason">这是今日的模拟决策，用于展示邮件主体内容...</div>
+        </div>
+        
+        <!-- Decision Process -->
+        <div class="process-section">
+            <div class="process-title">决策过程</div>
+            <div class="process-grid">
+                <div class="process-card">
+                    <div class="process-card-header">
+                        <span class="process-card-title">量化策略 (置信度: 80%)</span>
+                        <span class="process-card-tag" style="background: #d5f5e3; color: #27ae60;">正常定投</span>
+                    </div>
+                    <div class="process-card-reason">分位低估</div>
+                </div>
+                <div class="process-card">
+                    <div class="process-card-header">
+                        <span class="process-card-title">深度分析 (置信度: 80%)</span>
+                        <span class="process-card-tag" style="background: #d5f5e3; color: #27ae60;">正常定投</span>
+                    </div>
+                    <div class="process-card-reason">基本面良好</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Chart -->
+        <div class="chart-container">
+            <img src="cid:chart_2" alt="走势图">
+        </div>
+        
+        <!-- Warning -->
+        <div class="warning-box">趋势向下</div>
+    </div>
+</div>
+        </div>
+        
+        <!-- Backtest Section -->
+        
+<div class="section">
+    <div class="section-title">📊 策略效果验证</div>
+    <p style="font-size: 13px; color: #7f8c8d; margin: 0 0 16px 0;">
+        追踪历史决策在 3 个交易日后的实际表现，验证策略有效性
+    </p>
+    
+<div class="fund-card" style="margin-bottom: 16px;">
+    <div class="fund-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span class="fund-name">华安黄金ETF联接A</span>
+        <div>
+            <span style="font-size: 13px; color: #7f8c8d;">策略准确率 </span>
+            <span style="font-size: 20px; font-weight: 700; color: #16a34a;">80%</span>
+            <span style="font-size: 12px; color: #95a5a6;"> (8/10次)</span>
+        </div>
+    </div>
+    <div class="fund-body" style="padding: 12px 16px;">
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th style="width: 90px;">决策日期</th>
+                    <th style="width: 100px;">当日决策</th>
+                    <th style="width: 90px; text-align: right;">3日后收益</th>
+                    <th style="width: 60px; text-align: center;">验证</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+<tr>
+    <td>2026-01-25</td>
+    <td><span class="decision-tag" style="background: #fee2e2; color: #991b1b;">暂停定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #94a3b8;">待验证</td>
+    <td style="text-align: center;">⏳</td>
+</tr>
+
+<tr>
+    <td>2026-01-18</td>
+    <td><span class="decision-tag" style="background: #fee2e2; color: #991b1b;">暂停定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #94a3b8;">待验证</td>
+    <td style="text-align: center;">⏳</td>
+</tr>
+
+<tr>
+    <td>2026-01-11</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #16a34a;">+1.50%</td>
+    <td style="text-align: center;">✅</td>
+</tr>
+
+<tr>
+    <td>2026-01-04</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #16a34a;">+1.50%</td>
+    <td style="text-align: center;">✅</td>
+</tr>
+
+<tr>
+    <td>2025-12-28</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #dc2626;">-3.00%</td>
+    <td style="text-align: center;">❌</td>
+</tr>
+
+<tr>
+    <td>2025-12-21</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #16a34a;">+1.50%</td>
+    <td style="text-align: center;">✅</td>
+</tr>
+
+<tr>
+    <td>2025-12-14</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #16a34a;">+1.50%</td>
+    <td style="text-align: center;">✅</td>
+</tr>
+
+<tr>
+    <td>2025-12-07</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #16a34a;">+1.50%</td>
+    <td style="text-align: center;">✅</td>
+</tr>
+
+<tr>
+    <td>2025-11-30</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #16a34a;">+1.50%</td>
+    <td style="text-align: center;">✅</td>
+</tr>
+
+<tr>
+    <td>2025-11-23</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #dc2626;">-3.00%</td>
+    <td style="text-align: center;">❌</td>
+</tr>
+
+            </tbody>
+        </table>
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #ecf0f1; font-size: 13px; color: #7f8c8d; text-align: right;">
+            平均 3 日收益: <strong style="color: #16a34a;">+0.60%</strong>
+        </div>
+    </div>
+</div>
+
+<div class="fund-card" style="margin-bottom: 16px;">
+    <div class="fund-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <span class="fund-name">南方有色金属ETF联接A</span>
+        <div>
+            <span style="font-size: 13px; color: #7f8c8d;">策略准确率 </span>
+            <span style="font-size: 20px; font-weight: 700; color: #d97706;">50%</span>
+            <span style="font-size: 12px; color: #95a5a6;"> (4/8次)</span>
+        </div>
+    </div>
+    <div class="fund-body" style="padding: 12px 16px;">
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th style="width: 90px;">决策日期</th>
+                    <th style="width: 100px;">当日决策</th>
+                    <th style="width: 90px; text-align: right;">3日后收益</th>
+                    <th style="width: 60px; text-align: center;">验证</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+<tr>
+    <td>2026-01-27</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #94a3b8;">待验证</td>
+    <td style="text-align: center;">⏳</td>
+</tr>
+
+<tr>
+    <td>2026-01-22</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #94a3b8;">待验证</td>
+    <td style="text-align: center;">⏳</td>
+</tr>
+
+<tr>
+    <td>2026-01-17</td>
+    <td><span class="decision-tag" style="background: #dcfce7; color: #166534;">双倍补仓</span></td>
+    <td style="text-align: right; font-weight: 600; color: #dc2626;">-1.50%</td>
+    <td style="text-align: center;">❌</td>
+</tr>
+
+<tr>
+    <td>2026-01-12</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #16a34a;">+2.00%</td>
+    <td style="text-align: center;">✅</td>
+</tr>
+
+<tr>
+    <td>2026-01-07</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #dc2626;">-1.50%</td>
+    <td style="text-align: center;">❌</td>
+</tr>
+
+<tr>
+    <td>2026-01-02</td>
+    <td><span class="decision-tag" style="background: #dcfce7; color: #166534;">双倍补仓</span></td>
+    <td style="text-align: right; font-weight: 600; color: #16a34a;">+2.00%</td>
+    <td style="text-align: center;">✅</td>
+</tr>
+
+<tr>
+    <td>2025-12-28</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #dc2626;">-1.50%</td>
+    <td style="text-align: center;">❌</td>
+</tr>
+
+<tr>
+    <td>2025-12-23</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #16a34a;">+2.00%</td>
+    <td style="text-align: center;">✅</td>
+</tr>
+
+<tr>
+    <td>2025-12-18</td>
+    <td><span class="decision-tag" style="background: #dcfce7; color: #166534;">双倍补仓</span></td>
+    <td style="text-align: right; font-weight: 600; color: #dc2626;">-1.50%</td>
+    <td style="text-align: center;">❌</td>
+</tr>
+
+<tr>
+    <td>2025-12-13</td>
+    <td><span class="decision-tag" style="background: #dbeafe; color: #1e40af;">正常定投</span></td>
+    <td style="text-align: right; font-weight: 600; color: #16a34a;">+2.00%</td>
+    <td style="text-align: center;">✅</td>
+</tr>
+
+            </tbody>
+        </table>
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #ecf0f1; font-size: 13px; color: #7f8c8d; text-align: right;">
+            平均 3 日收益: <strong style="color: #16a34a;">+0.25%</strong>
+        </div>
+    </div>
+</div>
+
+</div>
+
+        
+        <!-- Glossary -->
+        <div class="glossary-section">
+            <div class="glossary-title">术语说明</div>
+            <div class="glossary-grid">
+                <div class="glossary-item">
+                    <span class="glossary-term">估值分位</span>
+                    <span class="glossary-def">当前价格在历史区间中的位置。0%=历史最低，100%=历史最高。类似考试成绩排名，85%意味着超过了85%的历史价格。</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">均线偏离</span>
+                    <span class="glossary-def">当前价格与过去60天平均价格的差距。偏离过大通常预示价格可能回归均值。</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">量化策略</span>
+                    <span class="glossary-def">基于数学模型和历史数据的客观规则判断，类似体检报告根据指标给出标准化建议。</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">深度分析</span>
+                    <span class="glossary-def">结合市场环境、持仓结构等因素的综合逻辑推理，类似医生问诊综合多种因素给出建议。</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">置信度</span>
+                    <span class="glossary-def">对该建议的确定程度。高=很有把握，中=有一定把握，低=参考性建议。</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">操作建议</span>
+                    <span class="glossary-def">综合量化策略与深度分析后的最终建议。当两者分歧时，系统会采取保守策略以控制风险。</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            本报告由系统自动生成，仅供参考，不构成投资建议。投资有风险，入市需谨慎。
+        </div>
+    </div>
+</body>
+</html>
