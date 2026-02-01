@@ -6,6 +6,7 @@ FundPilot-AI 基金智能定投决策系统
 import os
 import sys
 import time
+from datetime import datetime
 
 # 强制设置时区
 os.environ['TZ'] = 'Asia/Shanghai'
@@ -27,6 +28,7 @@ def init():
     """初始化系统"""
     logger.info("="*60)
     logger.info("FundPilot-AI 基金智能定投决策系统")
+    logger.info(f"当前系统时间: {datetime.now()} (时区: {os.environ.get('TZ', '未设置')})")
     logger.info("="*60)
     
     # 加载配置
