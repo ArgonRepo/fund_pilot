@@ -442,11 +442,9 @@ def confidence_to_score(confidence: str) -> float:
     return {"高": 0.9, "中": 0.6, "低": 0.3}.get(confidence, 0.5)
 ```
 
-#### 问题 2: get_buy_multiplier 未被使用
+#### ~~问题 2: get_buy_multiplier 未被使用~~ ✅ 已修复
 
-`etf_strategy.py` 中定义了 `get_buy_multiplier()` 函数计算补仓倍数，但在决策流程中未被调用。
-
-**建议**: 评估是否需要在报告中展示建议补仓倍数
+`etf_strategy.py` 中的 `get_buy_multiplier()` 函数现已集成到决策流程，并在邮件报告中展示建议补仓倍数 (如 `1.5x`, `暂停`)。
 
 ### 7.2 💡 优化建议
 
