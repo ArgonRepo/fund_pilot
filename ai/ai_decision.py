@@ -391,7 +391,14 @@ def get_ai_decision(
 
 
 def confidence_to_score(confidence: str) -> float:
-    """将信心度转换为数值"""
+    """将信心度转换为数值（支持百分比和文本格式）"""
+    # 支持百分比格式 (如 "80%")
+    if '%' in confidence:
+        try:
+            return float(confidence.replace('%', '')) / 100
+        except ValueError:
+            pass
+    # 文本格式
     return {"高": 0.9, "中": 0.6, "低": 0.3}.get(confidence, 0.5)
 
 
