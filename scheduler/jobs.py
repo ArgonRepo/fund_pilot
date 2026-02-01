@@ -196,11 +196,15 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         context_json = build_context(fund, valuation, metrics, holdings, market)
         db.save_decision_log(
             fund_code=fund.code,
+            fund_name=fund.name,
+            fund_type=fund.type,
+            asset_class=asset_class,
             decision_time=datetime.now(),
             estimate_change=valuation.estimate_change,
             percentile_250=metrics.percentile_250,
             ma_60=metrics.ma_60,
             ai_decision=synthesized.final_decision,
+            decision_nav=valuation.estimate_nav,
             ai_reasoning=synthesized.final_reasoning,
             raw_context=context_json
         )

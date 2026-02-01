@@ -22,6 +22,7 @@ from core.config import get_config
 from core.logger import logger
 from core.database import get_database
 from scheduler.jobs import run_decision_task, run_alert_task
+from scheduler.validation_job import run_validation_task
 
 
 def init():
@@ -81,6 +82,22 @@ def create_scheduler() -> BlockingScheduler:
         ),
         id='decision_task',
         name='决策任务',
+        replace_existing=True
+    )
+    
+    # 添加验证任务（决策后5分钟，验证T+5历史决策）
+    validation_minute = (decision_minute + 5) % 60
+    validation_hour = decision_hour if decision_minute + 5 < 60 else (decision_hour + 1) % 24
+    scheduler.add_job(
+        run_validation_task,
+        CronTrigger(
+            day_of_week='mon-fri',
+            hour=validation_hour,
+            minute=validation_minute,
+            timezone=config.scheduler.timezone
+        ),
+        id='validation_task',
+        name='决策验证任务',
         replace_existing=True
     )
     

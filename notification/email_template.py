@@ -153,6 +153,38 @@ def _confidence_to_pct(conf: str) -> str:
 
 
 # ============================================================
+# 回测统计模板
+# ============================================================
+
+BACKTEST_SECTION_TEMPLATE = """
+<div class="section" style="background: #f8fafc;">
+    <div class="section-title">📊 策略回测 (近30次统计)</div>
+    <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">
+        T+5 收益验证 | ✅成功 ❌失误 ⏳待验证
+    </div>
+    {fund_backtest_rows}
+</div>
+"""
+
+FUND_BACKTEST_ROW_TEMPLATE = """
+<div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; margin-bottom: 10px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-weight: 600; font-size: 14px;">{fund_name}</span>
+        <span style="font-size: 13px;">
+            准确率: <strong style="color: {accuracy_color};">{accuracy:.0f}%</strong> ({success}/{total})
+            | 平均T+5: <strong style="color: {avg_return_color};">{avg_return:+.2f}%</strong>
+        </span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+        {decision_tags}
+    </div>
+</div>
+"""
+
+DECISION_TAG_TEMPLATE = """<span style="display: inline-block; padding: 2px 6px; border-radius: 3px; font-size: 11px; background: {bg_color}; color: {text_color};" title="{tooltip}">{emoji} {return_str}</span>"""
+
+
+# ============================================================
 # v5.0 邮件模板 - 专业简洁风格
 # ============================================================
 
@@ -480,6 +512,9 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
             {fund_sections}
         </div>
         
+        <!-- Backtest Section -->
+        {backtest_section}
+        
         <!-- Glossary -->
         <div class="glossary-section">
             <div class="glossary-title">术语说明</div>
@@ -680,10 +715,86 @@ def generate_combined_email_html(
             buy_multiplier_display=_format_multiplier(report.buy_multiplier)
         ))
     
+    # Generate backtest section
+    backtest_html = _generate_backtest_section(reports)
+    
     return COMBINED_EMAIL_TEMPLATE.format(
         date_str=date_str,
         summary_rows="".join(summary_rows),
-        fund_sections="".join(fund_sections)
+        fund_sections="".join(fund_sections),
+        backtest_section=backtest_html
+    )
+
+
+def _generate_backtest_section(reports: list[FundReport]) -> str:
+    """生成回测统计区块"""
+    from core.database import get_database
+    
+    db = get_database()
+    fund_rows = []
+    
+    for report in reports:
+        # 获取统计数据
+        stats = db.get_fund_backtest_stats(report.fund_code, limit=30)
+        decisions = db.get_recent_decisions(report.fund_code, limit=20)
+        
+        # 如果没有足够数据，跳过
+        if stats["total"] < 3:
+            continue
+        
+        # 生成决策标签
+        tags = []
+        for d in decisions[:20]:  # 最近20条
+            if d["is_validated"]:
+                ret = d["actual_return_t5"] or 0
+                success = d["is_success"]
+                emoji = "✅" if success else "❌"
+                bg = "#d1fae5" if success else "#fee2e2"
+                text = "#065f46" if success else "#991b1b"
+            else:
+                ret = 0
+                emoji = "⏳"
+                bg = "#e2e8f0"
+                text = "#64748b"
+            
+            tags.append(DECISION_TAG_TEMPLATE.format(
+                bg_color=bg,
+                text_color=text,
+                emoji=emoji,
+                return_str=f"{ret:+.1f}%" if d["is_validated"] else "待验",
+                tooltip=f"{d['ai_decision']} ({d['decision_time'][:10]})"
+            ))
+        
+        # 准确率颜色
+        accuracy = stats["accuracy"]
+        if accuracy >= 70:
+            acc_color = "#16a34a"  # 绿
+        elif accuracy >= 50:
+            acc_color = "#d97706"  # 橙
+        else:
+            acc_color = "#dc2626"  # 红
+        
+        # 平均收益颜色
+        avg_ret = stats["avg_return"]
+        avg_color = "#16a34a" if avg_ret >= 0 else "#dc2626"
+        
+        fund_rows.append(FUND_BACKTEST_ROW_TEMPLATE.format(
+            fund_name=report.fund_name,
+            accuracy=accuracy,
+            accuracy_color=acc_color,
+            success=stats["success"],
+            total=stats["total"],
+            avg_return=avg_ret,
+            avg_return_color=avg_color,
+            decision_tags="".join(tags)
+        ))
+    
+    # 如果没有足够数据，返回空字符串
+    if not fund_rows:
+        return ""
+    
+    return BACKTEST_SECTION_TEMPLATE.format(
+        fund_backtest_rows="".join(fund_rows)
     )
 
 
