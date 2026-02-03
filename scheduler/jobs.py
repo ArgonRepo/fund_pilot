@@ -149,7 +149,23 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             estimate_change=valuation.estimate_change
         )
         
-        # 8. 构建报告数据（双轨决策版）
+        # 8. 计算补仓倍数 (v3.1)
+        raw_multiplier = get_buy_multiplier(
+            percentile=metrics.percentile_250,
+            consensus=metrics.percentile_consensus,
+            asset_class=asset_class
+        )
+        
+        # 决策一致性修正
+        final_multiplier = raw_multiplier
+        if synthesized.final_decision == "正常定投" and final_multiplier < 1.0:
+            final_multiplier = 1.0  # 既然决定定投，至少为 1.0
+        elif synthesized.final_decision == "双倍补仓" and final_multiplier < 2.0:
+            final_multiplier = 2.0  # 既然决定双倍，至少为 2.0
+        elif synthesized.final_decision in ["暂停定投", "观望"]:
+            final_multiplier = 0.0  # 既然决定暂停，必须为 0
+
+        # 9. 构建报告数据
         report = FundReport(
             fund_name=fund.name,
             fund_code=fund.code,
@@ -184,11 +200,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             synthesis_method=synthesized.synthesis_method,
             asset_class=asset_class,
             # v3.1 补仓倍数
-            buy_multiplier=get_buy_multiplier(
-                percentile=metrics.percentile_250,
-                consensus=metrics.percentile_consensus,
-                asset_class=asset_class
-            )
+            buy_multiplier=final_multiplier
         )
         
         # 9. 记录决策日志
