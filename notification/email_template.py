@@ -153,14 +153,14 @@ def _confidence_to_pct(conf: str) -> str:
 
 
 # ============================================================
-# 回测统计模板 (v2.1 与邮件风格一致)
+# 回测统计模板 (v3.0 双轨验证: T+1方向 + T+5收益)
 # ============================================================
 
 BACKTEST_SECTION_TEMPLATE = """
 <div class="section">
     <div class="section-title">📊 策略效果验证</div>
     <p style="font-size: 13px; color: #7f8c8d; margin: 0 0 16px 0;">
-        追踪历史决策在 3 个交易日后的实际表现，验证策略有效性
+        双轨验证: <strong>T+1</strong> 验证方向判断 | <strong>T+5</strong> 验证投资收益
     </p>
     {fund_backtest_rows}
 </div>
@@ -170,28 +170,29 @@ FUND_BACKTEST_ROW_TEMPLATE = """
 <div class="fund-card" style="margin-bottom: 16px;">
     <div class="fund-header" style="display: flex; justify-content: space-between; align-items: center;">
         <span class="fund-name">{fund_name}</span>
-        <div>
-            <span style="font-size: 13px; color: #7f8c8d;">策略准确率 </span>
-            <span style="font-size: 20px; font-weight: 700; color: {accuracy_color};">{accuracy:.0f}%</span>
-            <span style="font-size: 12px; color: #95a5a6;"> ({success}/{total}次)</span>
+        <div style="font-size: 13px;">
+            <span style="color: #7f8c8d;">方向准确 </span><strong style="color: {t1_color};">{t1_accuracy:.0f}%</strong>
+            <span style="color: #ccc; margin: 0 6px;">|</span>
+            <span style="color: #7f8c8d;">收益成功 </span><strong style="color: {t5_color};">{t5_accuracy:.0f}%</strong>
         </div>
     </div>
     <div class="fund-body" style="padding: 12px 16px;">
         <table class="summary-table">
             <thead>
                 <tr>
-                    <th style="width: 90px;">决策日期</th>
-                    <th style="width: 100px;">当日决策</th>
-                    <th style="width: 90px; text-align: right;">3日后收益</th>
-                    <th style="width: 60px; text-align: center;">验证</th>
+                    <th style="width: 80px;">日期</th>
+                    <th style="width: 90px;">决策</th>
+                    <th style="width: 80px; text-align: center;">T+1方向</th>
+                    <th style="width: 90px; text-align: right;">T+5收益</th>
+                    <th style="width: 50px; text-align: center;">结果</th>
                 </tr>
             </thead>
             <tbody>
                 {decision_rows}
             </tbody>
         </table>
-        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #ecf0f1; font-size: 13px; color: #7f8c8d; text-align: right;">
-            平均 3 日收益: <strong style="color: {avg_return_color};">{avg_return:+.2f}%</strong>
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid #ecf0f1; font-size: 12px; color: #7f8c8d; text-align: right;">
+            基于最近 {t5_total} 次已验证决策 | 平均 5 日收益: <strong style="color: {avg_return_color};">{t5_avg_return:+.2f}%</strong>
         </div>
     </div>
 </div>
@@ -201,7 +202,8 @@ DECISION_ROW_TEMPLATE = """
 <tr>
     <td>{date}</td>
     <td><span class="decision-tag" style="background: {decision_bg}; color: {decision_color};">{decision}</span></td>
-    <td style="text-align: right; font-weight: 600; color: {return_color};">{return_str}</td>
+    <td style="text-align: center;">{t1_display}</td>
+    <td style="text-align: right; color: {t5_return_color};">{t5_display}</td>
     <td style="text-align: center;">{result_emoji}</td>
 </tr>
 """
@@ -765,12 +767,12 @@ def _generate_backtest_section(reports: list[FundReport]) -> str:
     }
     
     for report in reports:
-        # 获取统计数据
+        # 获取统计数据 (双轨)
         stats = db.get_fund_backtest_stats(report.fund_code, limit=30)
-        decisions = db.get_recent_decisions(report.fund_code, limit=10)  # 只显示最近10条
+        decisions = db.get_recent_decisions(report.fund_code, limit=10)
         
         # 如果没有足够数据，跳过
-        if stats["total"] < 3:
+        if stats["t1_total"] < 3 and stats["t5_total"] < 3:
             continue
         
         # 生成决策表格行
@@ -781,48 +783,63 @@ def _generate_backtest_section(reports: list[FundReport]) -> str:
             
             # 日期格式化
             date_str = d["decision_time"][:10] if d["decision_time"] else "-"
+            # 只显示月日
+            if len(date_str) == 10:
+                date_str = date_str[5:]  # "02-03" 格式
             
-            if d["is_validated"]:
-                ret = d["actual_return_t5"] or 0
+            # T+1 方向显示
+            if d["validated_t1"]:
+                ret_t1 = d["return_t1"] or 0
+                direction_correct = d["direction_correct"]
+                arrow = "↑" if ret_t1 >= 0 else "↓"
+                emoji = "✓" if direction_correct else "✗"
+                t1_display = f"<span style='color: {'#16a34a' if direction_correct else '#dc2626'};'>{arrow} {emoji}</span>"
+            else:
+                t1_display = "<span style='color: #94a3b8;'>⏳</span>"
+            
+            # T+5 收益显示
+            if d["validated_t5"]:
+                ret_t5 = d["return_t5"] or 0
                 success = d["is_success"]
-                return_str = f"{ret:+.2f}%"
-                return_color = "#16a34a" if ret >= 0 else "#dc2626"
+                t5_display = f"{ret_t5:+.2f}%"
+                t5_return_color = "#16a34a" if ret_t5 >= 0 else "#dc2626"
                 result_emoji = "✅" if success else "❌"
             else:
-                return_str = "待验证"
-                return_color = "#94a3b8"
-                result_emoji = "⏳"
+                t5_display = "待验"
+                t5_return_color = "#94a3b8"
+                result_emoji = "⏳" if d["validated_t1"] else "—"
             
             decision_rows.append(DECISION_ROW_TEMPLATE.format(
                 date=date_str,
                 decision=decision_type,
                 decision_bg=style["bg"],
                 decision_color=style["color"],
-                return_str=return_str,
-                return_color=return_color,
+                t1_display=t1_display,
+                t5_display=t5_display,
+                t5_return_color=t5_return_color,
                 result_emoji=result_emoji
             ))
         
-        # 准确率颜色
-        accuracy = stats["accuracy"]
-        if accuracy >= 70:
-            acc_color = "#16a34a"  # 绿
-        elif accuracy >= 50:
-            acc_color = "#d97706"  # 橙
-        else:
-            acc_color = "#dc2626"  # 红
+        # T+1 方向准确率颜色
+        t1_acc = stats["t1_accuracy"]
+        t1_color = "#16a34a" if t1_acc >= 70 else ("#d97706" if t1_acc >= 50 else "#dc2626")
+        
+        # T+5 成功率颜色
+        t5_acc = stats["t5_accuracy"]
+        t5_color = "#16a34a" if t5_acc >= 70 else ("#d97706" if t5_acc >= 50 else "#dc2626")
         
         # 平均收益颜色
-        avg_ret = stats["avg_return"]
+        avg_ret = stats["t5_avg_return"]
         avg_color = "#16a34a" if avg_ret >= 0 else "#dc2626"
         
         fund_rows.append(FUND_BACKTEST_ROW_TEMPLATE.format(
             fund_name=report.fund_name,
-            accuracy=accuracy,
-            accuracy_color=acc_color,
-            success=stats["success"],
-            total=stats["total"],
-            avg_return=avg_ret,
+            t1_accuracy=t1_acc,
+            t1_color=t1_color,
+            t5_accuracy=t5_acc,
+            t5_color=t5_color,
+            t5_total=stats["t5_total"],
+            t5_avg_return=avg_ret,
             avg_return_color=avg_color,
             decision_rows="".join(decision_rows)
         ))
