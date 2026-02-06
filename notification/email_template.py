@@ -771,8 +771,8 @@ def _generate_backtest_section(reports: list[FundReport]) -> str:
         stats = db.get_fund_backtest_stats(report.fund_code, limit=30)
         decisions = db.get_recent_decisions(report.fund_code, limit=10)
         
-        # 如果没有任何数据，跳过
-        if stats["t1_total"] == 0 and stats["t5_total"] == 0:
+        # 如果没有任何决策记录，跳过
+        if not decisions:
             continue
         
         # 生成决策表格行
