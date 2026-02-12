@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS decision_log (
     decision_time TIMESTAMP NOT NULL,
     estimate_change REAL,
     percentile_250 REAL,
+    percentile_1250 REAL,                    -- 5年分位
     ma_60 REAL,
     ai_decision TEXT NOT NULL,               -- 双倍补仓/正常定投/暂停定投/观望
     ai_reasoning TEXT,
@@ -172,6 +173,7 @@ class Database:
         decision_time: datetime,
         estimate_change: Optional[float],
         percentile_250: Optional[float],
+        percentile_1250: Optional[float],
         ma_60: Optional[float],
         ai_decision: str,
         decision_nav: Optional[float] = None,
@@ -184,12 +186,12 @@ class Database:
                 """
                 INSERT INTO decision_log 
                 (fund_code, fund_name, fund_type, asset_class, decision_time, 
-                 estimate_change, percentile_250, ma_60, ai_decision, decision_nav,
+                 estimate_change, percentile_250, percentile_1250, ma_60, ai_decision, decision_nav,
                  ai_reasoning, raw_context)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (fund_code, fund_name, fund_type, asset_class, decision_time.isoformat(), 
-                 estimate_change, percentile_250, ma_60, ai_decision, decision_nav,
+                 estimate_change, percentile_250, percentile_1250, ma_60, ai_decision, decision_nav,
                  ai_reasoning, raw_context)
             )
         logger.info(f"保存决策日志: {fund_code} -> {ai_decision}")

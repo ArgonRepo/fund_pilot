@@ -244,6 +244,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             decision_time=datetime.now(),
             estimate_change=valuation.estimate_change,
             percentile_250=metrics.percentile_250,
+            percentile_1250=metrics.percentile_1250,
             ma_60=metrics.ma_60,
             ai_decision=synthesized.final_decision,
             decision_nav=valuation.estimate_nav,
