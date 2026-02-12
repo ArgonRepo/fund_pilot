@@ -59,25 +59,6 @@ class AppConfig:
     funds: list[FundConfig] = field(default_factory=list)
 
 
-def _parse_fund_list(fund_list_str: str) -> list[FundConfig]:
-    """解析基金列表 JSON 字符串"""
-    if not fund_list_str:
-        return []
-    try:
-        funds_data = json.loads(fund_list_str)
-        return [
-            FundConfig(
-                code=f["code"],
-                name=f["name"],
-                type=f["type"],
-                underlying_etf=f.get("underlying_etf"),
-                asset_class=f.get("asset_class")  # 资产类别
-            )
-            for f in funds_data
-        ]
-    except (json.JSONDecodeError, KeyError) as e:
-        raise ValueError(f"基金列表配置格式错误: {e}")
-
 
 def _parse_receivers(receivers_str: str) -> list[str]:
     """解析收件人列表（逗号分隔）"""
@@ -113,7 +94,29 @@ def load_config() -> AppConfig:
     )
     
     # 基金列表
-    funds = _parse_fund_list(os.getenv("FUND_LIST", "[]"))
+    # 仅从 data/funds.json 加载
+    funds_json_path = os.path.join(os.getcwd(), "data", "funds.json")
+    if os.path.exists(funds_json_path):
+        try:
+            with open(funds_json_path, "r", encoding="utf-8") as f:
+                funds_data = json.load(f)
+                funds = [
+                    FundConfig(
+                        code=f["code"],
+                        name=f["name"],
+                        type=f["type"],
+                        underlying_etf=f.get("underlying_etf"),
+                        asset_class=f.get("asset_class")
+                    )
+                    for f in funds_data
+                ]
+        except Exception as e:
+            raise ValueError(f"加载基金配置文件失败 (data/funds.json): {e}")
+    else:
+        # 如果文件不存在，返回空列表或抛出错误
+        # 这里选择返回空列表，但打印警告
+        print(f"Warning: Fund config file not found at {funds_json_path}")
+        funds = []
     
     return AppConfig(
         deepseek=deepseek,
