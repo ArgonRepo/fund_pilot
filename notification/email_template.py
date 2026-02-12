@@ -491,11 +491,11 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
             <div class="glossary-title">术语说明</div>
             <div class="glossary-grid">
                 <div class="glossary-item">
-                    <span class="glossary-term">估值分位</span>
+                    <span class="glossary-term">250日估值分位</span>
                     <span class="glossary-def">当前价格在历史区间中的位置。0%=历史最低，100%=历史最高。类似考试成绩排名，85%意味着超过了85%的历史价格。</span>
                 </div>
                 <div class="glossary-item">
-                    <span class="glossary-term">均线偏离</span>
+                    <span class="glossary-term">60日均线偏离</span>
                     <span class="glossary-def">当前价格与过去60天平均价格的差距。偏离过大通常预示价格可能回归均值。</span>
                 </div>
                 <div class="glossary-item">
@@ -551,11 +551,11 @@ FUND_SECTION_TEMPLATE = """<div class="fund-card">
                 <div class="metric-value" style="color: {change_color};">{estimate_change}</div>
             </div>
             <div class="metric-item">
-                <div class="metric-label">估值分位</div>
+                <div class="metric-label">250日估值分位</div>
                 <div class="metric-value" style="color: {zone_color};">{percentile_250:.0f}%</div>
             </div>
             <div class="metric-item">
-                <div class="metric-label">均线偏离</div>
+                <div class="metric-label">60日均线偏离</div>
                 <div class="metric-value">{ma_deviation:+.2f}%</div>
             </div>
         </div>
