@@ -80,8 +80,14 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             daily_change=valuation.estimate_change
         )
         
+        
         # 4. 获取持仓信息
-        holdings = get_holdings_with_quotes(fund)
+        # 优化: 黄金/QDII 基金因数据源限制暂无持仓明细，跳过获取以避免 Warning
+        asset_class = fund.asset_class or infer_asset_class(fund.type, fund.name)
+        holdings = None
+        
+        if asset_class not in ("GOLD_ETF", "US_EQUITY_INDEX") and fund.type != "QDII":
+            holdings = get_holdings_with_quotes(fund)
         
         # 5. 获取市场环境
         market = get_market_context()
@@ -89,7 +95,6 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         # === 双轨决策架构 ===
         
         # 6a. 策略主导决策（资产感知）
-        asset_class = fund.asset_class or infer_asset_class(fund.type, fund.name)
         
         # 获取大盘跌幅用于黄金对冲判断
         market_drop = None
