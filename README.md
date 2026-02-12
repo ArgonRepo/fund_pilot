@@ -154,12 +154,13 @@ python3 main.py
 
 ### 1. 上传项目
 ```bash
-scp -r fund_pilot user@your-server:/opt/
+# 假设本地项目在 fund_pilot 目录
+scp -r fund_pilot user@your-server:/root/app/
 ```
 
 ### 2. 服务器配置
 ```bash
-cd /opt/fund_pilot
+cd /root/app/fund_pilot
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -181,9 +182,9 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/fund_pilot
-Environment="PATH=/opt/fund_pilot/.venv/bin"
-ExecStart=/opt/fund_pilot/.venv/bin/python main.py
+WorkingDirectory=/root/app/fund_pilot
+Environment="PATH=/root/app/fund_pilot/.venv/bin"
+ExecStart=/root/app/fund_pilot/.venv/bin/python main.py
 Restart=always
 RestartSec=10
 
