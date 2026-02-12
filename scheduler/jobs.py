@@ -117,15 +117,38 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         # 6b. AI主导决策（专业化Prompt）
         # 构建动态阈值用于债券Prompt
         dynamic_thresholds = None
+        thresholds = get_thresholds(asset_class)
         if fund.type == "Bond":
-
-            thresholds = get_thresholds(asset_class)
             drop_normal, drop_severe = get_dynamic_drop_threshold(metrics.volatility_60)
             dynamic_thresholds = {
                 "ma_threshold": min(get_dynamic_ma_threshold(metrics.volatility_60), thresholds.ma_base_threshold),
                 "drop_normal": drop_normal,
                 "drop_severe": drop_severe
             }
+        
+        # A-1: 构建策略参考（供 AI 交叉验证，但不强制约束 AI）
+        strategy_reference = {
+            "decision": strategy_result.decision.value,
+            "confidence": f"{strategy_result.confidence:.0%}",
+            "reasoning": strategy_result.reasoning,
+            "note": "此为量化策略的独立判断，仅供参考。你应独立分析，可以认同也可以反驳。"
+        }
+        
+        # A-2: 构建资产阈值参考（让 AI 理解系统对该资产的波动预期）
+        asset_thresholds_info = {
+            "zone_thresholds": {
+                "golden_pit": f"<{thresholds.zone_thresholds[0]:.0f}%",
+                "undervalued": f"<{thresholds.zone_thresholds[1]:.0f}%",
+                "overvalued": f">{thresholds.zone_thresholds[2]:.0f}%",
+                "overheated": f">{thresholds.zone_thresholds[3]:.0f}%"
+            },
+            "circuit_breaker": {
+                "drop": f"{thresholds.circuit_breaker_drop:.1f}%",
+                "rise": f"{thresholds.circuit_breaker_rise:.1f}%"
+            },
+            "description": thresholds.description,
+            "note": "这些是系统为该资产类型设定的参考阈值，供你理解该类资产的正常波动范围"
+        }
         
         ai_result = get_ai_decision(
             fund_config=fund,
@@ -134,7 +157,9 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             holdings=holdings,
             market=market,
             dynamic_thresholds=dynamic_thresholds,
-            nq_futures=nq_futures
+            nq_futures=nq_futures,
+            strategy_reference=strategy_reference,
+            asset_thresholds=asset_thresholds_info
         )
         
         if ai_result:

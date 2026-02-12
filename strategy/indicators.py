@@ -46,6 +46,11 @@ class QuantMetrics:
     # 当日涨跌
     daily_change: Optional[float] # 当日涨跌幅 (%)
     
+    # 排名分位值（更稳健，不受极值影响）
+    rank_percentile_60: Optional[float] = None    # 60日排名分位
+    rank_percentile_250: Optional[float] = None   # 250日排名分位
+    rank_percentile_500: Optional[float] = None   # 500日排名分位
+    
     @property
     def percentile_consensus(self) -> str:
         """
@@ -152,6 +157,26 @@ def calculate_percentile(current_price: float, prices: list[float]) -> float:
     
     # 限制在 0-100 范围内
     return max(0, min(100, percentile))
+
+
+def calculate_rank_percentile(current_price: float, prices: list[float]) -> float:
+    """
+    计算排名分位值（更稳健，不受极值影响）
+    
+    公式: 低于当前价格的历史价格数量 / 总数量 * 100
+    
+    Args:
+        current_price: 当前价格
+        prices: 历史价格列表
+    
+    Returns:
+        排名分位值百分比 (0-100)
+    """
+    if not prices:
+        return 50.0
+    
+    count_below = sum(1 for p in prices if p < current_price)
+    return count_below / len(prices) * 100
 
 
 def calculate_ma(prices: list[float], window: int = MA_WINDOW) -> float:
@@ -310,7 +335,10 @@ def calculate_all_metrics(
         drawdown=calculate_drawdown(current_price, max_250),
         drawdown_60=calculate_drawdown(current_price, max_60),
         volatility_60=volatility_60,
-        daily_change=daily_change
+        daily_change=daily_change,
+        rank_percentile_60=calculate_rank_percentile(current_price, prices_60),
+        rank_percentile_250=calculate_rank_percentile(current_price, prices_250),
+        rank_percentile_500=calculate_rank_percentile(current_price, prices_500)
     )
 
 

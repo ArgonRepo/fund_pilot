@@ -21,8 +21,6 @@ from core.logger import get_logger
 logger = get_logger("bond_strategy")
 
 
-# 债券高估预警阈值
-BOND_OVERVALUED_PERCENTILE = 90  # 250日分位 > 90% 时提示风险
 
 
 @dataclass
@@ -47,7 +45,7 @@ def detect_bond_signal(
     2. 单日跌幅超过阈值
     
     预警条件：
-    - 250日分位 > 90%：高估预警
+    - 250日分位 > zone_thresholds[3]（资产特定高估线）
     
     Args:
         metrics: 量化指标
@@ -74,8 +72,9 @@ def detect_bond_signal(
         "asset_class": asset_class or "DEFAULT_BOND"
     }
     
-    # 检查是否高估
-    is_overvalued = metrics.percentile_250 >= BOND_OVERVALUED_PERCENTILE
+    # 检查是否高估（使用资产特定阈值）
+    overvalued_threshold = thresholds.zone_thresholds[3]  # 过热线
+    is_overvalued = metrics.percentile_250 >= overvalued_threshold
     
     # 信号 1: 显著跌破 60 日均线（动态阈值）
     if metrics.ma_deviation < ma_threshold:
@@ -160,17 +159,28 @@ def evaluate_bond_strategy(
     circuit_breaker = thresholds.circuit_breaker_drop
     
     # === 熔断检查（使用资产类型动态阈值）===
-    if metrics.daily_change is not None and metrics.daily_change < circuit_breaker:
-        return StrategyResult(
-            decision=Decision.HOLD,
-            confidence=0.3,
-            reasoning=f"触发熔断：债券单日大跌 {metrics.daily_change:.2f}%（阈值 {circuit_breaker:.1f}%），极为罕见，建议冷静观察后决策",
-            zone="熔断",
-            warnings=[f"债券极端行情：跌幅罕见（{asset_class}），可能有重大风险事件"]
-        )
+    if metrics.daily_change is not None:
+        if metrics.daily_change < circuit_breaker:
+            return StrategyResult(
+                decision=Decision.HOLD,
+                confidence=0.3,
+                reasoning=f"触发熔断：债券单日大跌 {metrics.daily_change:.2f}%（阈值 {circuit_breaker:.1f}%），极为罕见，建议冷静观察后决策",
+                zone="熔断",
+                warnings=[f"债券极端行情：跌幅罕见（{asset_class}），可能有重大风险事件"]
+            )
+        if metrics.daily_change > thresholds.circuit_breaker_rise:
+            return StrategyResult(
+                decision=Decision.HOLD,
+                confidence=0.3,
+                reasoning=f"触发熔断：债券单日异常大涨 {metrics.daily_change:+.2f}%（阈值 {thresholds.circuit_breaker_rise:.1f}%），建议观望而非追高",
+                zone="熔断",
+                warnings=["债券异常大涨，可能是利率急降或市场情绪过热，建议观望"]
+            )
     
     signal = detect_bond_signal(metrics, asset_class)
-    consensus = metrics.percentile_consensus
+    consensus = metrics.get_consensus_with_thresholds(
+        thresholds.consensus_low_threshold, thresholds.consensus_high_threshold
+    )
     
     # 动态阈值信息
     if signal.dynamic_thresholds:

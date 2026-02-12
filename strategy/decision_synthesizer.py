@@ -157,12 +157,22 @@ def synthesize_decisions(
         diff = abs(_decision_to_priority(strategy_decision) - _decision_to_priority(ai_decision))
         
         if diff >= 2:
-            # 极端分歧：保守处理
-            final_decision = _get_conservative_decision(strategy_decision, ai_decision)
-            combined_confidence = 0.5  # 降低信心
-            synthesis_method = "分歧保守处理"
-            final_reasoning = f"策略建议「{strategy_decision}」与AI建议「{ai_decision}」分歧较大，保守建议「{final_decision}」"
-            warnings.append(f"策略({strategy_decision})与AI({ai_decision})存在分歧")
+            # 极端分歧：通常保守处理
+            # 但若量化信号极强（如分位极低），应偏向策略侧
+            strategy_priority = _decision_to_priority(strategy_decision)
+            if strategy_priority >= 3 and strategy_result.confidence >= 0.85:
+                # 策略强烈看多且高置信度（如黄金坑 + 强低估共识），偏向策略
+                final_decision = strategy_decision
+                combined_confidence = strategy_confidence * 0.7 + ai_confidence * 0.3
+                synthesis_method = "极端分歧但量化信号极强，偏向策略"
+                final_reasoning = f"策略建议「{strategy_decision}」（置信度{strategy_confidence:.0%}），AI建议「{ai_decision}」存在分歧，但量化信号强烈，采纳策略建议"
+                warnings.append(f"策略({strategy_decision})与AI({ai_decision})分歧较大，因量化信号极强采纳策略建议")
+            else:
+                final_decision = _get_conservative_decision(strategy_decision, ai_decision)
+                combined_confidence = 0.5  # 降低信心
+                synthesis_method = "分歧保守处理"
+                final_reasoning = f"策略建议「{strategy_decision}」与AI建议「{ai_decision}」分歧较大，保守建议「{final_decision}」"
+                warnings.append(f"策略({strategy_decision})与AI({ai_decision})存在分歧")
             
             logger.info(f"极端分歧: 策略={strategy_decision}, AI={ai_decision}, 最终保守={final_decision}")
         else:

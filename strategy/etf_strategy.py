@@ -97,9 +97,11 @@ def evaluate_etf_strategy(
                 warnings=["极端行情熔断：涨幅过大，暂停决策"]
             )
     
-    # === 多周期分位共识 ===
+    # === 多周期分位共识（使用资产特定阈值）===
     percentile = metrics.percentile_250  # 主要参考
-    consensus = metrics.percentile_consensus
+    consensus = metrics.get_consensus_with_thresholds(
+        thresholds.consensus_low_threshold, thresholds.consensus_high_threshold
+    )
     trend = metrics.trend_direction
     zone = get_zone_name(percentile, thresholds)
     
@@ -193,11 +195,25 @@ def evaluate_etf_strategy(
                 confidence = 0.6
                 reasoning = f"250日分位 {percentile:.1f}%，黄金高估但具避险价值，建议观望而非暂停"
         else:
-            decision = Decision.STOP_BUY
-            if consensus in ["强高估", "弱高估"]:
+            # 非黄金资产高估处理
+            # 美股长牛特殊处理：避免频繁暂停导致踏空
+            if asset_class == AssetClass.US_EQUITY_INDEX.value:
+                if consensus in ["强高估", "弱高估"] and percentile > 95:
+                    decision = Decision.STOP_BUY
+                    confidence = 0.85
+                    reasoning = f"250日分位 {percentile:.1f}%（>95%），多周期共识「{consensus}」，美股极度过热，暂停定投"
+                else:
+                    decision = Decision.HOLD
+                    confidence = 0.65
+                    reasoning = f"250日分位 {percentile:.1f}%，美股长牛趋势中高估常态化，建议观望而非暂停"
+                    if consensus == "分歧":
+                        warnings.append("多周期存在分歧，高估可能只是阶段性的")
+            elif consensus in ["强高估", "弱高估"]:
+                decision = Decision.STOP_BUY
                 confidence = 0.95
                 reasoning = f"250日分位 {percentile:.1f}%，多周期共识「{consensus}」，坚决暂停定投积攒弹药"
             else:
+                decision = Decision.STOP_BUY
                 confidence = 0.8
                 reasoning = f"250日分位 {percentile:.1f}%，处于{zone}，建议暂停定投积攒弹药"
                 if consensus == "分歧":

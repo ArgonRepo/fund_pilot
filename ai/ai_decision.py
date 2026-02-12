@@ -42,7 +42,9 @@ def _build_ai_context(
     metrics: Optional[QuantMetrics],
     holdings: Optional[HoldingsInsight],
     market: Optional[MarketContext],
-    nq_futures=None
+    nq_futures=None,
+    strategy_reference: Optional[dict] = None,
+    asset_thresholds: Optional[dict] = None
 ) -> dict:
     """
     构建 AI 决策上下文（完整数据版 v2.0）
@@ -105,6 +107,15 @@ def _build_ai_context(
             "trend_direction": metrics.trend_direction,
             "note": "分位值表示当前净值在历史区间中的位置，0%=历史最低，100%=历史最高"
         }
+        
+        # 排名分位值（更稳健，不受极端值影响）
+        if metrics.rank_percentile_250 is not None:
+            context["rank_percentile"] = {
+                "60_days": round(metrics.rank_percentile_60, 1) if metrics.rank_percentile_60 is not None else None,
+                "250_days": round(metrics.rank_percentile_250, 1),
+                "500_days": round(metrics.rank_percentile_500, 1) if metrics.rank_percentile_500 is not None else None,
+                "note": "排名分位=低于当前价格的历史天数占比，不受极端值影响，可与极值分位对比验证"
+            }
         
         # 技术指标
         context["technical_indicators"] = {
@@ -199,6 +210,18 @@ def _build_ai_context(
             "is_fallback": nq_futures.is_fallback,
             "note": "期货数据反映美股市场最新方向预期，与实际指数存在基差"
         }
+    
+    # ============================================
+    # 7. 策略参考（供 AI 交叉验证）
+    # ============================================
+    if strategy_reference:
+        context["strategy_reference"] = strategy_reference
+    
+    # ============================================
+    # 8. 资产特定阈值参考
+    # ============================================
+    if asset_thresholds:
+        context["asset_thresholds"] = asset_thresholds
     
     return context
 
@@ -314,7 +337,9 @@ def get_ai_decision(
     holdings: Optional[HoldingsInsight],
     market: Optional[MarketContext],
     dynamic_thresholds: Optional[dict] = None,
-    nq_futures=None
+    nq_futures=None,
+    strategy_reference: Optional[dict] = None,
+    asset_thresholds: Optional[dict] = None
 ) -> Optional[AIDecisionResult]:
     """
     获取 AI 主导决策
@@ -342,7 +367,12 @@ def get_ai_decision(
     system_prompt = get_specialized_prompt(asset_class, dynamic_thresholds)
     
     # 构建上下文
-    context = _build_ai_context(fund_config, valuation, metrics, holdings, market, nq_futures=nq_futures)
+    context = _build_ai_context(
+        fund_config, valuation, metrics, holdings, market,
+        nq_futures=nq_futures,
+        strategy_reference=strategy_reference,
+        asset_thresholds=asset_thresholds
+    )
     context_json = json.dumps(context, ensure_ascii=False, indent=2)
     
     # 构建用户消息
@@ -395,15 +425,22 @@ def get_ai_decision(
 
 
 def confidence_to_score(confidence: str) -> float:
-    """将信心度转换为数值（支持百分比和文本格式）"""
+    """
+    将信心度转换为数值（支持百分比和文本格式）
+    
+    注意：AI 自评信心度通常偏高（≥70%），而策略信心度是规则推导的（0.5-0.8）。
+    为使两者在合成器中可比，对 AI 百分比信心度施加 0.85 折扣系数。
+    """
     # 支持百分比格式 (如 "80%")
     if '%' in confidence:
         try:
-            return float(confidence.replace('%', '')) / 100
+            raw = float(confidence.replace('%', '')) / 100
+            # AI 自评折扣：80% → 0.68, 70% → 0.595, 90% → 0.765
+            return raw * 0.85
         except ValueError:
             pass
-    # 文本格式
-    return {"高": 0.9, "中": 0.6, "低": 0.3}.get(confidence, 0.5)
+    # 文本格式（同样施加折扣）
+    return {"高": 0.76, "中": 0.51, "低": 0.25}.get(confidence, 0.5)
 
 
 def score_to_confidence(score: float) -> str:
