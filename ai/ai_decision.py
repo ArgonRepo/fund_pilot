@@ -98,9 +98,9 @@ def _build_ai_context(
                     "value": round(metrics.percentile_250, 1),
                     "interpretation": get_percentile_zone(metrics.percentile_250)
                 },
-                "500_days": {
-                    "value": round(metrics.percentile_500, 1),
-                    "interpretation": get_percentile_zone(metrics.percentile_500)
+                "1250_days_5y": {
+                    "value": round(metrics.percentile_1250, 1),
+                    "interpretation": get_percentile_zone(metrics.percentile_1250)
                 }
             },
             "percentile_consensus": metrics.percentile_consensus,
@@ -113,7 +113,7 @@ def _build_ai_context(
             context["rank_percentile"] = {
                 "60_days": round(metrics.rank_percentile_60, 1) if metrics.rank_percentile_60 is not None else None,
                 "250_days": round(metrics.rank_percentile_250, 1),
-                "500_days": round(metrics.rank_percentile_500, 1) if metrics.rank_percentile_500 is not None else None,
+                "1250_days": round(metrics.rank_percentile_1250, 1) if metrics.rank_percentile_1250 is not None else None,
                 "note": "排名分位=低于当前价格的历史天数占比，不受极端值影响，可与极值分位对比验证"
             }
         

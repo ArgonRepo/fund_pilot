@@ -196,7 +196,7 @@ def run_alert_task():
                 drawdown=metrics.drawdown_60,
                 holdings_txt=holdings_txt,
                 percentile_60=metrics.percentile_60,
-                percentile_500=metrics.percentile_500,
+                percentile_1250=metrics.percentile_1250,
                 volatility_60=metrics.volatility_60,
                 nq_change_pct=nq_data.change_pct if (fund.type == "QDII" and nq_data) else None,
                 nq_data_source=nq_data.data_source if (fund.type == "QDII" and nq_data) else None,

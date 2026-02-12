@@ -67,7 +67,7 @@ def build_context(
             # 多周期分位值
             "percentile_60": round(metrics.percentile_60, 1),
             "percentile_250": round(metrics.percentile_250, 1),
-            "percentile_500": round(metrics.percentile_500, 1),
+            "percentile_1250_5y": round(metrics.percentile_1250, 1),
             "percentile_consensus": metrics.percentile_consensus,
             "trend_direction": metrics.trend_direction,
             # 均线相关

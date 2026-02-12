@@ -195,7 +195,7 @@ def evaluate_bond_strategy(
     if consensus == "分歧":
         warnings.append(
             f"多周期分位分歧：60日={metrics.percentile_60:.0f}%，"
-            f"250日={metrics.percentile_250:.0f}%，500日={metrics.percentile_500:.0f}%"
+            f"250日={metrics.percentile_250:.0f}%，500日={metrics.percentile_1250:.0f}%"
         )
     
     # 趋势警告

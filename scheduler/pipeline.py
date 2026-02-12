@@ -66,8 +66,8 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             logger.warning(f"基金 {fund.code} 获取估值失败")
             return FundResult(fund=fund, success=False, error="获取估值失败")
         
-        # 2. 获取历史净值（520天，约2年，用于计算500日分位）
-        history = get_fund_history(fund.code, days=520)
+        # 2. 获取历史净值（1250天，约5年，用于计算长期分位）
+        history = get_fund_history(fund.code, days=1250)
         if not history:
             logger.warning(f"基金 {fund.code} 获取历史净值失败")
             return FundResult(fund=fund, success=False, error="获取历史净值失败")
@@ -215,7 +215,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             chart_cid=f"chart_{fund.code}",
             warnings=synthesized.warnings,
             percentile_60=metrics.percentile_60,
-            percentile_500=metrics.percentile_500,
+            percentile_1250=metrics.percentile_1250,
             volatility_60=metrics.volatility_60,
             percentile_consensus=metrics.percentile_consensus,
             trend_direction=metrics.trend_direction,

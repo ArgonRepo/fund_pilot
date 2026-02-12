@@ -81,12 +81,13 @@ def evaluate_etf_strategy(
     # === 熔断检查 ===
     if metrics.daily_change is not None:
         if metrics.daily_change < thresholds.circuit_breaker_drop:
+            # 暴跌往往是机会，改为正常定投 + 提示
             return StrategyResult(
-                decision=Decision.HOLD,
-                confidence=0.3,
-                reasoning=f"触发熔断：单日大跌 {metrics.daily_change:.1f}%，建议冷静观察，次日再决策",
-                zone="熔断",
-                warnings=["极端行情熔断：跌幅过大，暂停决策"]
+                decision=Decision.NORMAL_BUY,
+                confidence=0.6,
+                reasoning=f"触发熔断：单日大跌 {metrics.daily_change:.1f}%，恐慌时刻往往是买入机会，建议保持定投",
+                zone="机会区",
+                warnings=[f"极端行情：单日大跌 {metrics.daily_change:.1f}%，已触发买入机会"]
             )
         if metrics.daily_change > thresholds.circuit_breaker_rise:
             return StrategyResult(
@@ -111,7 +112,7 @@ def evaluate_etf_strategy(
     
     # 共识冲突警告
     if consensus == "分歧":
-        warnings.append(f"多周期分位分歧：60日={metrics.percentile_60:.0f}%，250日={metrics.percentile_250:.0f}%，500日={metrics.percentile_500:.0f}%")
+        warnings.append(f"多周期分位分歧：60日={metrics.percentile_60:.0f}%，250日={metrics.percentile_250:.0f}%，500日={metrics.percentile_1250:.0f}%")
     
     # 趋势警告
     if trend == "上升趋势" and percentile > zones[2]:  # 高于高估阈值

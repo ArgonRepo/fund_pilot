@@ -22,7 +22,7 @@ class AlertFundData:
     holdings_txt: Optional[str] = None # 持仓概览 (前3大重仓+涨跌)
     # 新增字段 v2.0
     percentile_60: Optional[float] = None   # 60日分位
-    percentile_500: Optional[float] = None  # 500日分位
+    percentile_1250: Optional[float] = None  # 500日分位
     volatility_60: Optional[float] = None   # 60日年化波动率
     # QDII NQ=F 期货参考
     nq_change_pct: Optional[float] = None     # NQ=F 期货涨跌幅

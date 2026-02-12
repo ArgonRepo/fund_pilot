@@ -27,7 +27,7 @@ class FundReport:
     # 新增字段 v2.0
     warnings: Optional[list[str]] = None           # 风险提示列表
     percentile_60: Optional[float] = None          # 60日分位值
-    percentile_500: Optional[float] = None         # 500日分位值
+    percentile_1250: Optional[float] = None         # 1250日分位值
     volatility_60: Optional[float] = None          # 60日年化波动率
     percentile_consensus: Optional[str] = None     # 多周期共识
     trend_direction: Optional[str] = None          # 趋势方向

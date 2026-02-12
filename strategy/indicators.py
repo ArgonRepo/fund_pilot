@@ -16,7 +16,7 @@ import math
 # 窗口配置
 PERCENTILE_WINDOW_SHORT = 60    # 短期分位窗口：60 日
 PERCENTILE_WINDOW_MID = 250     # 中期分位窗口：250 日（约 1 年）
-PERCENTILE_WINDOW_LONG = 500    # 长期分位窗口：500 日（约 2 年）
+PERCENTILE_WINDOW_LONG = 1250   # 长期分位窗口：1250 日（约 5 年）
 MA_WINDOW = 60                  # 均线计算窗口：60 日
 
 
@@ -24,9 +24,9 @@ MA_WINDOW = 60                  # 均线计算窗口：60 日
 class QuantMetrics:
     """量化指标集合"""
     # 多周期分位值
-    percentile_60: float          # 60日分位值 (0-100) - 短期
-    percentile_250: float         # 250日分位值 (0-100) - 中期（主要参考）
-    percentile_500: float         # 500日分位值 (0-100) - 长期
+    percentile_60: float          # 60日排名分位 (0-100) - 短期
+    percentile_250: float         # 250日排名分位 (0-100) - 中期（主要参考）
+    percentile_1250: float        # 1250日(5年)排名分位 (0-100) - 长期
     
     # 均线相关
     ma_60: float                  # 60日均线
@@ -49,7 +49,7 @@ class QuantMetrics:
     # 排名分位值（更稳健，不受极值影响）
     rank_percentile_60: Optional[float] = None    # 60日排名分位
     rank_percentile_250: Optional[float] = None   # 250日排名分位
-    rank_percentile_500: Optional[float] = None   # 500日排名分位
+    rank_percentile_1250: Optional[float] = None   # 1250日排名分位
     
     @property
     def percentile_consensus(self) -> str:
@@ -82,7 +82,7 @@ class QuantMetrics:
         Returns:
             趋势: "上升趋势" / "下降趋势" / "震荡"
         """
-        diff = self.percentile_60 - self.percentile_500
+        diff = self.percentile_60 - self.percentile_1250
         if diff > 20:
             return "上升趋势"
         elif diff < -20:
@@ -109,11 +109,11 @@ def get_percentile_consensus(
     """
     short_low = metrics.percentile_60 < low_threshold
     mid_low = metrics.percentile_250 < low_threshold
-    long_low = metrics.percentile_500 < low_threshold
+    long_low = metrics.percentile_1250 < low_threshold
     
     short_high = metrics.percentile_60 > high_threshold
     mid_high = metrics.percentile_250 > high_threshold
-    long_high = metrics.percentile_500 > high_threshold
+    long_high = metrics.percentile_1250 > high_threshold
     
     low_count = sum([short_low, mid_low, long_low])
     high_count = sum([short_high, mid_high, long_high])
@@ -325,9 +325,10 @@ def calculate_all_metrics(
     volatility_60 = calculate_volatility(prices_history, 60)
     
     return QuantMetrics(
-        percentile_60=calculate_percentile(current_price, prices_60),
-        percentile_250=calculate_percentile(current_price, prices_250),
-        percentile_500=calculate_percentile(current_price, prices_500),
+        # 核心改动 v3.1: 切换为 Rank Percentile (排名分位)，更符合估值逻辑
+        percentile_60=calculate_rank_percentile(current_price, prices_60),
+        percentile_250=calculate_rank_percentile(current_price, prices_250),
+        percentile_1250=calculate_rank_percentile(current_price, prices_500),
         ma_60=ma_60,
         ma_deviation=calculate_ma_deviation(current_price, ma_60),
         max_250=max_250,
@@ -338,7 +339,7 @@ def calculate_all_metrics(
         daily_change=daily_change,
         rank_percentile_60=calculate_rank_percentile(current_price, prices_60),
         rank_percentile_250=calculate_rank_percentile(current_price, prices_250),
-        rank_percentile_500=calculate_rank_percentile(current_price, prices_500)
+        rank_percentile_1250=calculate_rank_percentile(current_price, prices_500)
     )
 
 
