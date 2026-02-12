@@ -426,13 +426,13 @@ def generate_alert_email_html(
         if fund.fund_type == "QDII":
             if fund.nq_change_pct is not None:
                 display_change = fund.nq_change_pct
-                display_label = f"NQ {_format_change(display_change)}"
+                display_label = f"实时 {_format_change(display_change)}"
             else:
                 display_change = fund.estimate_change
                 display_label = f'<span style="color:#94a3b8">前日 {_format_change(display_change)}</span>'
         else:
             display_change = fund.estimate_change
-            display_label = _format_change(display_change)
+            display_label = f"实时 {_format_change(display_change)}"
         
         fund_rows.append(FUND_ROW_TEMPLATE.format(
             fund_code=fund.fund_code,

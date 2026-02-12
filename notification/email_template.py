@@ -620,13 +620,13 @@ def generate_combined_email_html(
         if report.fund_type == "QDII":
             if report.nq_change_pct is not None:
                 display_change = report.nq_change_pct
-                display_label = f"NQ=F {_format_change(display_change)}"
+                display_label = f"实时 {_format_change(display_change)}"
             else:
                 display_change = report.estimate_change
                 display_label = f'<span style="color:#94a3b8">前日 {_format_change(display_change)}</span>'
         else:
             display_change = report.estimate_change
-            display_label = _format_change(display_change)
+            display_label = f"实时 {_format_change(display_change)}"
         
         summary_rows.append(SUMMARY_ROW_TEMPLATE.format(
             fund_name=report.fund_name,
@@ -682,13 +682,13 @@ def generate_combined_email_html(
         if report.fund_type == "QDII":
             if report.nq_change_pct is not None:
                 card_change = report.nq_change_pct
-                card_label = f"NQ=F {_format_change(card_change)}"
+                card_label = f"实时 {_format_change(card_change)}"
             else:
                 card_change = report.estimate_change
                 card_label = f'前日 {_format_change(card_change)}'
         else:
             card_change = report.estimate_change
-            card_label = _format_change(card_change)
+            card_label = f"实时 {_format_change(card_change)}"
         
         fund_sections.append(FUND_SECTION_TEMPLATE.format(
             fund_name=report.fund_name,

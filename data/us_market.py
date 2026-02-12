@@ -160,7 +160,8 @@ def _fetch_nq_realtime() -> Optional[NQFuturesData]:
         
     except Exception as e:
         error_msg = str(e)
-        if "Rate" in error_msg or "429" in error_msg or "Too Many" in error_msg:
+        # yfinance 限流有两种表现: 显式 429 或 'Response' object is not subscriptable
+        if "Rate" in error_msg or "429" in error_msg or "Too Many" in error_msg or "subscriptable" in error_msg:
             logger.warning(f"NQ=F 被限流，等待重试: {e}")
             raise  # 让 tenacity 处理重试
         else:
@@ -214,7 +215,7 @@ def _fetch_nq_fallback_history() -> Optional[NQFuturesData]:
         
     except Exception as e:
         error_msg = str(e)
-        if "Rate" in error_msg or "429" in error_msg or "Too Many" in error_msg:
+        if "Rate" in error_msg or "429" in error_msg or "Too Many" in error_msg or "subscriptable" in error_msg:
             logger.warning(f"NQ=F 历史也被限流，等待重试: {e}")
             raise
         else:
