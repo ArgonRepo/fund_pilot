@@ -422,10 +422,14 @@ def generate_alert_email_html(
         if len(name) > 10:
             name = name[:9] + "…"
         
-        # QDII: 使用 NQ=F 期货数据替代过期的天天基金估值
-        if fund.fund_type == "QDII" and fund.nq_change_pct is not None:
-            display_change = fund.nq_change_pct
-            display_label = f"NQ {_format_change(display_change)}"
+        # QDII 三种状态: NQ=F可用 → 期货 / NQ=F不可用 → 前日净值 / 非QDII → 实时估值
+        if fund.fund_type == "QDII":
+            if fund.nq_change_pct is not None:
+                display_change = fund.nq_change_pct
+                display_label = f"NQ {_format_change(display_change)}"
+            else:
+                display_change = fund.estimate_change
+                display_label = f'<span style="color:#94a3b8">前日 {_format_change(display_change)}</span>'
         else:
             display_change = fund.estimate_change
             display_label = _format_change(display_change)

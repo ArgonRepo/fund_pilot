@@ -616,10 +616,14 @@ def generate_combined_email_html(
     # Summary Rows
     summary_rows = []
     for report in reports:
-        # QDII: 使用 NQ=F 期货数据替代过期的天天基金估值
-        if report.fund_type == "QDII" and report.nq_change_pct is not None:
-            display_change = report.nq_change_pct
-            display_label = f"NQ=F {_format_change(display_change)}"
+        # QDII 三种状态: NQ=F可用 → 显示期货 / NQ=F不可用 → 标记为前日净值 / 非QDII → 实时估值
+        if report.fund_type == "QDII":
+            if report.nq_change_pct is not None:
+                display_change = report.nq_change_pct
+                display_label = f"NQ=F {_format_change(display_change)}"
+            else:
+                display_change = report.estimate_change
+                display_label = f'<span style="color:#94a3b8">前日 {_format_change(display_change)}</span>'
         else:
             display_change = report.estimate_change
             display_label = _format_change(display_change)
@@ -674,10 +678,14 @@ def generate_combined_email_html(
             <span style="color: #94a3b8; margin-left: 8px; font-size: 11px;">仅供盘中参考</span>
         </div>'''
         
-        # QDII: 指标卡片也用 NQ=F 替代
-        if report.fund_type == "QDII" and report.nq_change_pct is not None:
-            card_change = report.nq_change_pct
-            card_label = f"NQ=F {_format_change(card_change)}"
+        # QDII: 指标卡片也区分三种状态
+        if report.fund_type == "QDII":
+            if report.nq_change_pct is not None:
+                card_change = report.nq_change_pct
+                card_label = f"NQ=F {_format_change(card_change)}"
+            else:
+                card_change = report.estimate_change
+                card_label = f'前日 {_format_change(card_change)}'
         else:
             card_change = report.estimate_change
             card_label = _format_change(card_change)
