@@ -48,20 +48,6 @@ CREATE TABLE IF NOT EXISTS decision_log (
     raw_context TEXT,
     decision_nav REAL,                       -- 决策时净值（估值）
     
-    -- T+1 方向验证
-    nav_t1 REAL,                             -- T+1 实际净值
-    return_t1 REAL,                          -- T+1 收益率 (%)
-    direction_correct INTEGER,               -- T+1 方向是否正确 (0/1/NULL)
-    validated_t1 INTEGER DEFAULT 0,          -- T+1 是否已验证
-    validated_t1_at TIMESTAMP,               -- T+1 验证时间
-    
-    -- T+5 收益验证
-    nav_t5 REAL,                             -- T+5 实际净值
-    return_t5 REAL,                          -- T+5 收益率 (%)
-    is_success INTEGER,                      -- T+5 决策是否成功 (0/1/NULL)
-    validated_t5 INTEGER DEFAULT 0,          -- T+5 是否已验证
-    validated_t5_at TIMESTAMP,               -- T+5 验证时间
-    
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -79,7 +65,7 @@ CREATE TABLE IF NOT EXISTS holdings_cache (
 -- 创建索引
 CREATE INDEX IF NOT EXISTS idx_nav_fund_date ON fund_nav_history(fund_code, nav_date);
 CREATE INDEX IF NOT EXISTS idx_decision_fund_time ON decision_log(fund_code, decision_time);
-CREATE INDEX IF NOT EXISTS idx_decision_validated ON decision_log(validated_t1, validated_t5, decision_time);
+CREATE INDEX IF NOT EXISTS idx_decision_time ON decision_log(decision_time);
 CREATE INDEX IF NOT EXISTS idx_holdings_fund ON holdings_cache(fund_code);
 """
 
@@ -198,168 +184,6 @@ class Database:
                  ai_reasoning, raw_context)
             )
         logger.info(f"保存决策日志: {fund_code} -> {ai_decision}")
-    
-    # ==================== T+1 方向验证 ====================
-    
-    def get_pending_t1_validations(self, days_ago: int = 1) -> list[dict]:
-        """获取待 T+1 验证的决策记录"""
-        cutoff_date = (datetime.now() - timedelta(days=days_ago)).isoformat()
-        with self.get_connection() as conn:
-            cursor = conn.execute(
-                """
-                SELECT id, fund_code, fund_name, fund_type, asset_class, 
-                       decision_time, ai_decision, decision_nav
-                FROM decision_log
-                WHERE validated_t1 = 0 
-                  AND decision_time < ?
-                  AND decision_nav IS NOT NULL
-                ORDER BY decision_time ASC
-                """,
-                (cutoff_date,)
-            )
-            return [dict(row) for row in cursor]
-    
-    def update_t1_validation(
-        self,
-        decision_id: int,
-        nav_t1: float,
-        return_t1: float,
-        direction_correct: bool
-    ):
-        """更新 T+1 方向验证结果"""
-        with self.get_connection() as conn:
-            conn.execute(
-                """
-                UPDATE decision_log
-                SET nav_t1 = ?,
-                    return_t1 = ?,
-                    direction_correct = ?,
-                    validated_t1 = 1,
-                    validated_t1_at = ?
-                WHERE id = ?
-                """,
-                (nav_t1, return_t1, 1 if direction_correct else 0, 
-                 datetime.now().isoformat(), decision_id)
-            )
-        direction_emoji = "↑" if return_t1 >= 0 else "↓"
-        logger.info(f"T+1验证: ID={decision_id}, {direction_emoji}{return_t1:+.2f}%, 方向{'✓' if direction_correct else '✗'}")
-    
-    # ==================== T+5 收益验证 ====================
-    
-    def get_pending_t5_validations(self, days_ago: int = 5) -> list[dict]:
-        """获取待 T+5 验证的决策记录"""
-        cutoff_date = (datetime.now() - timedelta(days=days_ago)).isoformat()
-        with self.get_connection() as conn:
-            cursor = conn.execute(
-                """
-                SELECT id, fund_code, fund_name, fund_type, asset_class, 
-                       decision_time, ai_decision, decision_nav
-                FROM decision_log
-                WHERE validated_t5 = 0 
-                  AND decision_time < ?
-                  AND decision_nav IS NOT NULL
-                ORDER BY decision_time ASC
-                """,
-                (cutoff_date,)
-            )
-            return [dict(row) for row in cursor]
-    
-    def update_t5_validation(
-        self,
-        decision_id: int,
-        nav_t5: float,
-        return_t5: float,
-        is_success: bool
-    ):
-        """更新 T+5 收益验证结果"""
-        with self.get_connection() as conn:
-            conn.execute(
-                """
-                UPDATE decision_log
-                SET nav_t5 = ?,
-                    return_t5 = ?,
-                    is_success = ?,
-                    validated_t5 = 1,
-                    validated_t5_at = ?
-                WHERE id = ?
-                """,
-                (nav_t5, return_t5, 1 if is_success else 0, 
-                 datetime.now().isoformat(), decision_id)
-            )
-        logger.info(f"T+5验证: ID={decision_id}, 收益={return_t5:+.2f}%, {'成功' if is_success else '失败'}")
-    
-    # ==================== 回测统计 ====================
-    
-    def get_fund_backtest_stats(self, fund_code: str, limit: int = 30) -> dict:
-        """获取基金回测统计（双轨: T+1方向 + T+5收益）"""
-        with self.get_connection() as conn:
-            # T+1 方向统计
-            cursor = conn.execute(
-                """
-                SELECT COUNT(*) as total,
-                       SUM(CASE WHEN direction_correct = 1 THEN 1 ELSE 0 END) as correct_count
-                FROM (
-                    SELECT direction_correct
-                    FROM decision_log
-                    WHERE fund_code = ? 
-                      AND validated_t1 = 1
-                      AND ai_decision != '观望'
-                    ORDER BY decision_time DESC
-                    LIMIT ?
-                )
-                """,
-                (fund_code, limit)
-            )
-            t1_row = cursor.fetchone()
-            
-            # T+5 收益统计
-            cursor = conn.execute(
-                """
-                SELECT COUNT(*) as total,
-                       SUM(CASE WHEN is_success = 1 THEN 1 ELSE 0 END) as success_count,
-                       AVG(return_t5) as avg_return
-                FROM (
-                    SELECT is_success, return_t5
-                    FROM decision_log
-                    WHERE fund_code = ? 
-                      AND validated_t5 = 1
-                      AND ai_decision != '观望'
-                    ORDER BY decision_time DESC
-                    LIMIT ?
-                )
-                """,
-                (fund_code, limit)
-            )
-            t5_row = cursor.fetchone()
-            
-            return {
-                # T+1 方向
-                "t1_total": t1_row["total"] if t1_row and t1_row["total"] else 0,
-                "t1_correct": t1_row["correct_count"] if t1_row and t1_row["correct_count"] else 0,
-                "t1_accuracy": (t1_row["correct_count"] or 0) / t1_row["total"] * 100 if t1_row and t1_row["total"] else 0,
-                # T+5 收益
-                "t5_total": t5_row["total"] if t5_row and t5_row["total"] else 0,
-                "t5_success": t5_row["success_count"] if t5_row and t5_row["success_count"] else 0,
-                "t5_accuracy": (t5_row["success_count"] or 0) / t5_row["total"] * 100 if t5_row and t5_row["total"] else 0,
-                "t5_avg_return": t5_row["avg_return"] if t5_row and t5_row["avg_return"] else 0,
-            }
-    
-    def get_recent_decisions(self, fund_code: str, limit: int = 10) -> list[dict]:
-        """获取最近的决策记录明细（双轨验证）"""
-        with self.get_connection() as conn:
-            cursor = conn.execute(
-                """
-                SELECT decision_time, ai_decision, decision_nav,
-                       return_t1, direction_correct, validated_t1,
-                       return_t5, is_success, validated_t5
-                FROM decision_log
-                WHERE fund_code = ?
-                ORDER BY decision_time DESC
-                LIMIT ?
-                """,
-                (fund_code, limit)
-            )
-            return [dict(row) for row in cursor]
     
     # ==================== 持仓缓存操作 ====================
     
