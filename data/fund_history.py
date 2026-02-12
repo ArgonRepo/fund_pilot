@@ -12,7 +12,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from core.logger import get_logger
 from core.database import get_database
-from data.http_client import request_stats
+from core.http_client import request_stats
 
 logger = get_logger("fund_history")
 

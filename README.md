@@ -33,7 +33,7 @@ fund_pilot/
 │   ├── ai_decision.py         # AI 决策主逻辑 + 上下文构建
 │   ├── deepseek_client.py     # DeepSeek API 客户端
 │   ├── specialized_prompts.py # 7 种资产专用 Prompt
-│   └── prompt_builder.py      # 盘中预警上下文构建
+│   └── alert_context.py       # 盘中预警上下文构建
 ├── strategy/                  # 量化策略引擎
 │   ├── decision_synthesizer.py # 双轨决策合成器
 │   ├── etf_strategy.py        # ETF/黄金/周期/美股策略
@@ -52,13 +52,19 @@ fund_pilot/
 │   ├── alert_template.py      # 盘中快报模板
 │   └── sender.py              # 邮件发送
 ├── scheduler/                 # 任务调度
-│   ├── jobs.py                # 定时任务（决策/预警）
+│   ├── jobs.py                # 定时任务编排（决策/预警）
+│   ├── pipeline.py            # 单基金决策流水线
 │   └── calendar.py            # 交易日历
-├── core/                      # 核心配置
+├── core/                      # 核心基础设施
 │   ├── config.py              # 配置加载（从 funds.json）
+│   ├── database.py            # SQLite 数据库管理
+│   ├── http_client.py         # 统一 HTTP 客户端（反爬虫）
+│   ├── bootstrap.py           # 系统启动引导
 │   └── logger.py              # 日志系统
 ├── visualization/             # 图表生成
 │   └── chart.py               # 趋势图（10日K线 + 均线）
+├── assets/                    # 静态资源
+│   └── fonts/SimHei.ttf       # 中文字体（图表渲染）
 └── main.py                    # 启动入口
 ```
 

@@ -22,10 +22,10 @@ logger = get_logger("chart")
 
 # 字体配置
 try:
-    # 1. 优先使用项目内置字体 (data/fonts/SimHei.ttf)
+    # 1. 优先使用项目内置字体 (assets/fonts/SimHei.ttf)
     # 请从 https://github.com/StellarCN/scp_zh/raw/master/fonts/SimHei.ttf 下载并放入该目录
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    font_path = os.path.join(project_root, "data", "fonts", "SimHei.ttf")
+    font_path = os.path.join(project_root, "assets", "fonts", "SimHei.ttf")
     
     if os.path.exists(font_path):
         font_prop = FontProperties(fname=font_path)

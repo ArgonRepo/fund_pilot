@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from core.logger import get_logger
-from data.http_client import get_text, request_stats
+from core.http_client import get_text, request_stats
 
 logger = get_logger("fund_valuation")
 

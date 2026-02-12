@@ -13,7 +13,7 @@ import akshare as ak
 from core.logger import get_logger
 from core.database import get_database
 from core.config import FundConfig
-from data.http_client import get_text, request_stats
+from core.http_client import get_text, request_stats
 
 logger = get_logger("holdings")
 

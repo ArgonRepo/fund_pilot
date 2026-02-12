@@ -12,7 +12,7 @@ from typing import Optional
 from core.config import get_config
 from core.logger import get_logger
 
-logger = get_logger("email_sender")
+logger = get_logger("sender")
 
 
 class EmailSender:

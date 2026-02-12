@@ -13,10 +13,19 @@ from core.logger import get_logger
 
 logger = get_logger("database")
 
-# 数据库文件路径
+# 数据库文件路径（默认存放在项目 data/ 目录）
 DB_DIR = Path(__file__).parent.parent / "data"
 DB_DIR.mkdir(exist_ok=True)
-DB_FILE = DB_DIR / "fundpilot.db"
+
+def _get_db_path() -> Path:
+    """获取数据库路径（优先使用环境变量 DB_PATH）"""
+    import os
+    custom_path = os.environ.get("DB_PATH")
+    if custom_path:
+        p = Path(custom_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+    return DB_DIR / "fundpilot.db"
 
 
 # 建表 SQL
@@ -73,8 +82,8 @@ CREATE INDEX IF NOT EXISTS idx_holdings_fund ON holdings_cache(fund_code);
 class Database:
     """数据库管理类"""
     
-    def __init__(self, db_path: Path = DB_FILE):
-        self.db_path = db_path
+    def __init__(self, db_path: Path = None):
+        self.db_path = db_path or _get_db_path()
         self._init_db()
     
     def _init_db(self):
