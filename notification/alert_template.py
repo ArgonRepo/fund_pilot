@@ -422,31 +422,25 @@ def generate_alert_email_html(
         if len(name) > 10:
             name = name[:9] + "…"
         
+        # QDII: 使用 NQ=F 期货数据替代过期的天天基金估值
+        if fund.fund_type == "QDII" and fund.nq_change_pct is not None:
+            display_change = fund.nq_change_pct
+            display_label = f"NQ {_format_change(display_change)}"
+        else:
+            display_change = fund.estimate_change
+            display_label = _format_change(display_change)
+        
         fund_rows.append(FUND_ROW_TEMPLATE.format(
             fund_code=fund.fund_code,
             fund_name=name,
             fund_type=_get_fund_type_short(fund.fund_type),
-            estimate_change=_format_change(fund.estimate_change),
-            change_color=_get_change_color(fund.estimate_change),
+            estimate_change=display_label,
+            change_color=_get_change_color(display_change),
             percentile=f"{fund.percentile_250:.0f}%",
             zone=fund.zone,
             zone_bg=zone_bg,
             zone_color=zone_color
         ))
-        
-        # QDII 基金: 追加 NQ=F 期货参考行
-        if fund.nq_change_pct is not None:
-            nq_color = _get_change_color(fund.nq_change_pct)
-            src = "📡 NQ=F" if fund.nq_data_source == "nq_futures" else "📡 T-1"
-            status = f" ({fund.nq_market_status})" if fund.nq_market_status else ""
-            fund_rows.append(f'''<tr>
-    <td></td>
-    <td colspan="2" style="font-size: 11px; color: #64748b; padding: 2px 8px 10px; border-bottom: 1px solid #f0f0f0;">
-        {src}: <strong style="color: {nq_color};">{fund.nq_change_pct:+.2f}%</strong>
-        <span style="color: #94a3b8;">{status} 仅供参考</span>
-    </td>
-    <td></td><td></td>
-</tr>''')
     
     # 量化指标行
     metrics_rows = []
