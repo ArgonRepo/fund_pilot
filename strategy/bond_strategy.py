@@ -174,11 +174,11 @@ def evaluate_bond_strategy(
     
     # 动态阈值信息
     if signal.dynamic_thresholds:
-        thresholds = signal.dynamic_thresholds
+        dynamic_info = signal.dynamic_thresholds
         warnings.append(
-            f"动态阈值：均线偏离 {thresholds['ma_threshold']:.2f}%，"
-            f"大跌 {thresholds['drop_normal']:.2f}%/{thresholds['drop_severe']:.2f}%"
-            f"（基于 {thresholds['volatility_60']:.1f}% 年化波动率）"
+            f"动态阈值：均线偏离 {dynamic_info['ma_threshold']:.2f}%，"
+            f"大跌 {dynamic_info['drop_normal']:.2f}%/{dynamic_info['drop_severe']:.2f}%"
+            f"（基于 {dynamic_info['volatility_60']:.1f}% 年化波动率）"
         )
     
     # 多周期分位警告

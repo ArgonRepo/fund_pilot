@@ -11,10 +11,11 @@ FundPilot-AI AI主导决策模块
 from dataclasses import dataclass
 from typing import Optional
 import json
+import re
 
 from ai.deepseek_client import get_deepseek_client
 from ai.specialized_prompts import get_specialized_prompt, get_asset_description
-from strategy.indicators import QuantMetrics
+from strategy.indicators import QuantMetrics, get_percentile_zone
 from strategy.asset_config import infer_asset_class
 from data.fund_valuation import FundValuation
 from data.holdings import HoldingsInsight
@@ -89,15 +90,15 @@ def _build_ai_context(
             "multi_period_percentile": {
                 "60_days": {
                     "value": round(metrics.percentile_60, 1),
-                    "interpretation": _interpret_percentile(metrics.percentile_60)
+                    "interpretation": get_percentile_zone(metrics.percentile_60)
                 },
                 "250_days": {
                     "value": round(metrics.percentile_250, 1),
-                    "interpretation": _interpret_percentile(metrics.percentile_250)
+                    "interpretation": get_percentile_zone(metrics.percentile_250)
                 },
                 "500_days": {
                     "value": round(metrics.percentile_500, 1),
-                    "interpretation": _interpret_percentile(metrics.percentile_500)
+                    "interpretation": get_percentile_zone(metrics.percentile_500)
                 }
             },
             "percentile_consensus": metrics.percentile_consensus,
@@ -202,19 +203,6 @@ def _build_ai_context(
     return context
 
 
-def _interpret_percentile(percentile: float) -> str:
-    """解释分位值含义"""
-    if percentile < 20:
-        return "极端低估区"
-    elif percentile < 40:
-        return "低估区"
-    elif percentile < 60:
-        return "正常区"
-    elif percentile < 80:
-        return "偏高区"
-    else:
-        return "极端高估区"
-
 
 def _interpret_volatility(volatility: float) -> str:
     """解释波动率水平"""
@@ -282,7 +270,6 @@ def _parse_ai_response(response: str) -> tuple[str, str, str]:
         if len(parts) > 1:
             conf_part = parts[1].split("【")[0].strip()
             # 先检查百分比格式
-            import re
             pct_match = re.search(r'(\d{1,3})\s*%', conf_part)
             if pct_match:
                 confidence = f"{pct_match.group(1)}%"

@@ -152,18 +152,6 @@ def get_email_sender() -> EmailSender:
     return _sender
 
 
-def send_decision_email(
-    subject: str,
-    html_content: str,
-    chart_image: Optional[bytes] = None
-) -> bool:
-    """
-    发送决策邮件（便捷函数，单图版）
-    """
-    sender = get_email_sender()
-    return sender.send(subject, html_content, chart_image)
-
-
 def send_combined_report(
     subject: str,
     html_content: str,

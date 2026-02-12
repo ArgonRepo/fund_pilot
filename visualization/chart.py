@@ -4,6 +4,7 @@ FundPilot-AI 可视化模块
 """
 
 import io
+import os
 from datetime import date
 from typing import Optional
 
@@ -18,7 +19,6 @@ from core.logger import get_logger
 
 logger = get_logger("chart")
 
-import os
 
 # 字体配置
 try:
@@ -89,12 +89,8 @@ def generate_trend_chart(
     last_nav = navs[-1]
     
     # 判断涨跌颜色
-    if estimate_today >= last_nav:
-        today_color = COLOR_UP
-        line_style = '--'
-    else:
-        today_color = COLOR_DOWN
-        line_style = '--'
+    today_color = COLOR_UP if estimate_today >= last_nav else COLOR_DOWN
+    line_style = '--'
     
     # 创建图表
     fig, ax = plt.subplots(figsize=(10, 5), dpi=100)
@@ -173,51 +169,3 @@ def generate_trend_chart(
     logger.info(f"生成趋势图: {fund_name}")
     return buf.getvalue()
 
-
-def generate_simple_chart(
-    fund_name: str,
-    navs: list[float],
-    current: float,
-    ma_60: float
-) -> bytes:
-    """
-    生成简化趋势图（仅数值，无日期）
-    
-    Args:
-        fund_name: 基金名称
-        navs: 历史净值列表
-        current: 当前/预估净值
-        ma_60: 60日均线
-    
-    Returns:
-        PNG 图片字节流
-    """
-    # 创建图表
-    fig, ax = plt.subplots(figsize=(8, 4), dpi=100)
-    
-    # X 轴为序号
-    x = list(range(len(navs)))
-    x_current = len(navs)
-    
-    # 绘制历史
-    ax.plot(x, navs, color='#2c3e50', linewidth=2, marker='o', markersize=4)
-    
-    # 绘制当前
-    color = COLOR_UP if current >= navs[-1] else COLOR_DOWN
-    ax.plot([x[-1], x_current], [navs[-1], current], 
-            color=color, linewidth=2, linestyle='--', marker='o', markersize=6)
-    
-    # MA60
-    ax.axhline(y=ma_60, color=COLOR_MA60, linestyle='-.', linewidth=1.5)
-    
-    ax.set_title(f'{fund_name}', fontsize=12, fontweight='bold')
-    ax.grid(True, linestyle='--', alpha=0.3)
-    
-    plt.tight_layout()
-    
-    buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', facecolor='white')
-    buf.seek(0)
-    plt.close(fig)
-    
-    return buf.getvalue()

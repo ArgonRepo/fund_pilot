@@ -89,33 +89,6 @@ class DeepSeekClient:
             logger.error(f"DeepSeek API 调用失败: {e}")
             raise
     
-    def get_decision(self, system_prompt: str, context_json: str) -> Optional[str]:
-        """
-        获取投资决策
-        
-        Args:
-            system_prompt: 系统提示词
-            context_json: JSON 格式的上下文
-        
-        Returns:
-            AI 决策回复
-        """
-        user_message = f"""请基于以下数据给出投资决策建议：
-
-```json
-{context_json}
-```
-
-请严格按照以下格式回复：
-1. 【决策】：[双倍补仓/正常定投/暂停定投/观望] 之一
-2. 【理由】：简短说明（50字以内）
-"""
-        
-        try:
-            return self.chat(system_prompt, user_message)
-        except Exception as e:
-            logger.error(f"获取决策失败: {e}")
-            return None
 
 
 # 全局客户端实例（延迟加载）

@@ -15,10 +15,10 @@ from data.fund_history import get_fund_history, get_recent_nav
 from data.holdings import get_holdings_with_quotes
 from data.market import get_market_context
 from data.http_client import request_stats
-from strategy.indicators import calculate_all_metrics, QuantMetrics
+from strategy.indicators import calculate_all_metrics, QuantMetrics, get_percentile_zone, get_dynamic_ma_threshold, get_dynamic_drop_threshold
 from strategy.etf_strategy import evaluate_etf_strategy, get_buy_multiplier
 from strategy.bond_strategy import evaluate_bond_strategy
-from strategy.asset_config import infer_asset_class
+from strategy.asset_config import infer_asset_class, get_thresholds
 from strategy.decision_synthesizer import synthesize_decisions
 from ai.ai_decision import get_ai_decision
 from ai.prompt_builder import build_context
@@ -118,8 +118,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         # 构建动态阈值用于债券Prompt
         dynamic_thresholds = None
         if fund.type == "Bond":
-            from strategy.indicators import get_dynamic_ma_threshold, get_dynamic_drop_threshold
-            from strategy.asset_config import get_thresholds
+
             thresholds = get_thresholds(asset_class)
             drop_normal, drop_severe = get_dynamic_drop_threshold(metrics.volatility_60)
             dynamic_thresholds = {
@@ -390,7 +389,7 @@ def run_alert_task():
             )
             
             # 确定估值区间
-            from strategy.indicators import get_percentile_zone
+
             zone = get_percentile_zone(metrics.percentile_250)
             
             # 获取持仓信息 (用于穿透分析)

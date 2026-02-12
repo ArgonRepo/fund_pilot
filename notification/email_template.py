@@ -640,8 +640,8 @@ def generate_combined_email_html(
                 # Use circled numbers for multiple warnings
                 nums = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"]
                 warning_items = "".join(
-                    f'<div>{nums[i] if i < len(nums) else str(i+1)+"."} {w}</div>'
-                    for i, w in enumerate(report.warnings)
+                    f'<div>{nums[wi] if wi < len(nums) else str(wi+1)+"."} {w}</div>'
+                    for wi, w in enumerate(report.warnings)
                 )
                 warning_html = f'<div class="warning-box">{warning_items}</div>'
         

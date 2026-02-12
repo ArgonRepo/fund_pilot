@@ -55,43 +55,6 @@ def is_trading_day(check_date: Optional[date] = None) -> bool:
     return True
 
 
-def is_trading_hours(check_time: Optional[datetime] = None) -> bool:
-    """
-    判断是否在交易时间段内
-    
-    A 股交易时间：
-    - 上午 9:30 - 11:30
-    - 下午 13:00 - 15:00
-    
-    Args:
-        check_time: 要检查的时间，默认当前时间
-    
-    Returns:
-        是否在交易时间内
-    """
-    if check_time is None:
-        check_time = datetime.now()
-    
-    hour = check_time.hour
-    minute = check_time.minute
-    
-    # 上午盘 9:30 - 11:30
-    if hour == 9 and minute >= 30:
-        return True
-    if hour == 10:
-        return True
-    if hour == 11 and minute <= 30:
-        return True
-    
-    # 下午盘 13:00 - 15:00
-    if hour == 13 or hour == 14:
-        return True
-    if hour == 15 and minute == 0:
-        return True
-    
-    return False
-
-
 def should_run_task() -> bool:
     """
     判断是否应该运行任务
