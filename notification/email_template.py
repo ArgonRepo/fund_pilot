@@ -469,7 +469,7 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
                 <thead>
                     <tr>
                         <th>基金</th>
-                        <th>今日涨跌</th>
+                        <th>实时估值</th>
                         <th>估值水平</th>
                         <th style="text-align: right;">操作建议</th>
                     </tr>
@@ -547,7 +547,7 @@ FUND_SECTION_TEMPLATE = """<div class="fund-card">
         <!-- Metrics -->
         <div class="metrics-grid">
             <div class="metric-item">
-                <div class="metric-label">今日涨跌</div>
+                <div class="metric-label">实时估值</div>
                 <div class="metric-value" style="color: {change_color};">{estimate_change}</div>
             </div>
             <div class="metric-item">

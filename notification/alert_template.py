@@ -289,7 +289,7 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
                 <tr>
                     <th>代码</th>
                     <th>基金</th>
-                    <th class="text-right">今日估值</th>
+                    <th class="text-right">实时估值</th>
                     <th class="text-center">250日分位</th>
                     <th class="text-center">估值区间</th>
                 </tr>
