@@ -83,11 +83,19 @@ def fetch_nq_futures() -> Optional[NQFuturesData]:
         return _nq_cache
     
     # 2. 尝试实时获取
-    result = _fetch_nq_realtime()
+    try:
+        result = _fetch_nq_realtime()
+    except Exception as e:
+        logger.warning(f"NQ=F 实时数据重试耗尽: {e}")
+        result = None
     
     # 3. 实时失败，尝试历史降级
     if result is None:
-        result = _fetch_nq_fallback_history()
+        try:
+            result = _fetch_nq_fallback_history()
+        except Exception as e:
+            logger.warning(f"NQ=F 历史数据重试耗尽: {e}")
+            result = None
     
     # 4. 更新缓存
     if result is not None:
