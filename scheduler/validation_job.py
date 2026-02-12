@@ -54,6 +54,12 @@ T5_SUCCESS_THRESHOLDS = {
         "正常定投": (-0.5, None),
         "暂停定投": (None, 0.2),
     },
+    # 美股QDII: 波动大 + 净值滞后，阈值更宽
+    "US_EQUITY_INDEX": {
+        "双倍补仓": (0, None),      # T+5 >= 0%
+        "正常定投": (-4, None),     # T+5 >= -4% (美股波动大)
+        "暂停定投": (None, 2),      # T+5 <= 2%
+    },
 }
 
 DEFAULT_T5_THRESHOLDS = {

@@ -40,7 +40,8 @@ def _build_ai_context(
     valuation: Optional[FundValuation],
     metrics: Optional[QuantMetrics],
     holdings: Optional[HoldingsInsight],
-    market: Optional[MarketContext]
+    market: Optional[MarketContext],
+    nq_futures=None
 ) -> dict:
     """
     构建 AI 决策上下文（完整数据版 v2.0）
@@ -184,6 +185,20 @@ def _build_ai_context(
         ]
     }
     
+    # ============================================
+    # 6. NQ=F 纳指期货参考 (QDII 专用)
+    # ============================================
+    if nq_futures:
+        context["nq_futures_reference"] = {
+            "data_source": nq_futures.data_source,
+            "price": nq_futures.price,
+            "change_pct": f"{nq_futures.change_pct:+.2f}%",
+            "previous_close": nq_futures.previous_close,
+            "market_status": nq_futures.market_status,
+            "is_fallback": nq_futures.is_fallback,
+            "note": "期货数据反映美股市场最新方向预期，与实际指数存在基差"
+        }
+    
     return context
 
 
@@ -311,7 +326,8 @@ def get_ai_decision(
     metrics: Optional[QuantMetrics],
     holdings: Optional[HoldingsInsight],
     market: Optional[MarketContext],
-    dynamic_thresholds: Optional[dict] = None
+    dynamic_thresholds: Optional[dict] = None,
+    nq_futures=None
 ) -> Optional[AIDecisionResult]:
     """
     获取 AI 主导决策
@@ -323,6 +339,7 @@ def get_ai_decision(
         holdings: 持仓洞察
         market: 市场环境
         dynamic_thresholds: 动态阈值（用于 Prompt）
+        nq_futures: NQ=F 期货数据（QDII 基金专用）
     
     Returns:
         AIDecisionResult 或 None（失败时）
@@ -338,7 +355,7 @@ def get_ai_decision(
     system_prompt = get_specialized_prompt(asset_class, dynamic_thresholds)
     
     # 构建上下文
-    context = _build_ai_context(fund_config, valuation, metrics, holdings, market)
+    context = _build_ai_context(fund_config, valuation, metrics, holdings, market, nq_futures=nq_futures)
     context_json = json.dumps(context, ensure_ascii=False, indent=2)
     
     # 构建用户消息

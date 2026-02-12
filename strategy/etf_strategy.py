@@ -255,6 +255,20 @@ def get_buy_multiplier(
             base_multiplier = 0.3
         else:
             base_multiplier = 0.0
+    elif asset_class == "US_EQUITY_INDEX":
+        # 美股长牛，低估罕见但珍贵，低位更积极
+        if percentile < 5.0:
+            base_multiplier = 2.0
+        elif percentile < zones[0]:  # 10%
+            base_multiplier = 1.8
+        elif percentile < zones[1]:  # 25%
+            base_multiplier = 1.2
+        elif percentile < zones[2]:  # 75%
+            base_multiplier = 1.0
+        elif percentile < zones[3]:  # 90%
+            base_multiplier = 0.5
+        else:
+            base_multiplier = 0.0
     else:
         # 其他资产类型使用标准逻辑
         if percentile < zones[0] * 0.5:  # 极端低估

@@ -18,9 +18,9 @@ class FundConfig:
     """基金配置"""
     code: str
     name: str
-    type: str  # "Bond" 或 "ETF_Feeder"
+    type: str  # "Bond" / "ETF_Feeder" / "QDII"
     underlying_etf: Optional[str] = None  # ETF 联接基金对应的底层 ETF
-    asset_class: Optional[str] = None     # 资产类别: GOLD_ETF / COMMODITY_CYCLE / BOND_ENHANCED 等
+    asset_class: Optional[str] = None     # 资产类别: GOLD_ETF / COMMODITY_CYCLE / BOND_ENHANCED / US_EQUITY_INDEX 等
 
 
 @dataclass

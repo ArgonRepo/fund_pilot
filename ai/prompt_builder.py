@@ -7,6 +7,10 @@ FundPilot-AI Prompt 构建模块
 - 波动率信息用于动态阈值
 - 增加市场体制和趋势判断
 - 债券利率环境提示
+
+重要更新 v2.1:
+- QDII 基金支持：注入 NQ=F 纳指期货数据作为盘中参考
+- 数据来源追踪：明确标注 nq_futures / fund_nav
 """
 
 import json
@@ -15,6 +19,7 @@ from typing import Optional
 from data.fund_valuation import FundValuation
 from data.holdings import HoldingsInsight
 from data.market import MarketContext
+from data.us_market import NQFuturesData
 from strategy.indicators import QuantMetrics
 from core.config import FundConfig
 
@@ -83,7 +88,8 @@ def build_context(
     valuation: Optional[FundValuation],
     metrics: Optional[QuantMetrics],
     holdings: Optional[HoldingsInsight],
-    market: Optional[MarketContext]
+    market: Optional[MarketContext],
+    nq_futures: Optional[NQFuturesData] = None
 ) -> str:
     """
     构建 AI 决策上下文（增强版）
@@ -94,6 +100,7 @@ def build_context(
         metrics: 量化指标
         holdings: 持仓洞察
         market: 市场环境
+        nq_futures: NQ=F 期货数据（QDII 基金专用）
     
     Returns:
         JSON 格式的上下文字符串
@@ -141,6 +148,17 @@ def build_context(
             "shanghai_index": f"{market.shanghai_index.change:+.2f}%" if market.shanghai_index else "N/A",
             "hs300_index": f"{market.hs300_index.change:+.2f}%" if market.hs300_index else "N/A",
             "summary": market.summary
+        }
+    
+    # NQ=F 纳指期货数据 (QDII 基金专用)
+    if nq_futures:
+        context["nq_futures_reference"] = {
+            "data_source": nq_futures.data_source,
+            "price": nq_futures.price,
+            "change_pct": f"{nq_futures.change_pct:+.2f}%",
+            "market_status": nq_futures.market_status,
+            "is_fallback": nq_futures.is_fallback,
+            "note": "期货数据仅供参考，与实际指数存在基差"
         }
     
     return json.dumps(context, ensure_ascii=False, indent=2)

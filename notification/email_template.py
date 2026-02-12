@@ -42,6 +42,9 @@ class FundReport:
     synthesis_method: Optional[str] = None         # 合成方式
     asset_class: Optional[str] = None              # 资产类型
     buy_multiplier: Optional[float] = None         # 建议补仓倍数 (1.0=正常, 2.0=双倍, 0=暂停)
+    # QDII 纳指期货参考
+    nq_change_pct: Optional[float] = None          # NQ=F 期货涨跌幅
+    nq_data_source: Optional[str] = None           # 数据来源: "nq_futures" | "fund_nav" | None
 
 
 # ============================================================
@@ -72,7 +75,7 @@ def _get_decision_bg(decision: str) -> str:
 
 
 def _get_fund_type_label(fund_type: str) -> str:
-    return {"Bond": "债券型", "ETF_Feeder": "ETF联接"}.get(fund_type, fund_type)
+    return {"Bond": "债券型", "ETF_Feeder": "ETF联接", "QDII": "QDII"}.get(fund_type, fund_type)
 
 
 def _format_change(change: float) -> str:
@@ -129,6 +132,7 @@ def _get_asset_label(asset_class: str) -> str:
         "COMMODITY_CYCLE": "周期",
         "BOND_ENHANCED": "固收+",
         "BOND_PURE": "纯债",
+        "US_EQUITY_INDEX": "纳指",
         "DEFAULT_ETF": "ETF",
         "DEFAULT_BOND": "债基",
     }
@@ -613,6 +617,7 @@ FUND_SECTION_TEMPLATE = """<div class="fund-card">
                 <div class="metric-value">{ma_deviation:+.2f}%</div>
             </div>
         </div>
+        {nq_reference_html}
         
         <!-- Conclusion -->
         <div class="conclusion-box">
@@ -706,6 +711,19 @@ def generate_combined_email_html(
         ai_tag_bg = _get_decision_bg(report.ai_decision or report.decision)
         ai_tag_color = _get_decision_color(report.ai_decision or report.decision)
         
+        # NQ=F 期货参考 HTML (QDII 专用)
+        nq_html = ""
+        if report.nq_change_pct is not None:
+            nq_color = "#c0392b" if report.nq_change_pct > 0 else "#27ae60" if report.nq_change_pct < 0 else "#2c3e50"
+            source_label = "📡 NQ=F 期货" if report.nq_data_source == "nq_futures" else "📡 T-1 净值"
+            fallback_note = ' <span style="color: #e67e22; font-size: 10px;">(降级)</span>' if report.nq_data_source != "nq_futures" else ""
+            nq_html = f'''
+        <div style="background: #f0f9ff; border-left: 3px solid #0ea5e9; padding: 8px 12px; margin: 8px 0 12px 0; border-radius: 0 4px 4px 0; font-size: 12px;">
+            <span style="color: #64748b;">{source_label}{fallback_note}:</span>
+            <strong style="color: {nq_color}; margin-left: 6px;">{report.nq_change_pct:+.2f}%</strong>
+            <span style="color: #94a3b8; margin-left: 8px; font-size: 11px;">仅供盘中参考</span>
+        </div>'''
+        
         fund_sections.append(FUND_SECTION_TEMPLATE.format(
             fund_name=report.fund_name,
             fund_code=report.fund_code,
@@ -737,7 +755,8 @@ def generate_combined_email_html(
             
             chart_cid=report.chart_cid or f"chart_{i}",
             warning_html=warning_html,
-            buy_multiplier_display=_format_multiplier(report.buy_multiplier)
+            buy_multiplier_display=_format_multiplier(report.buy_multiplier),
+            nq_reference_html=nq_html
         ))
     
     # Generate backtest section

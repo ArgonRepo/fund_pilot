@@ -1,6 +1,6 @@
 """
 FundPilot-AI 定时任务定义模块
-定义预警和决策任务（双轨决策版 v3.0）
+定义预警和决策任务（双轨决策版 v3.1 + QDII 支持）
 """
 
 from dataclasses import dataclass
@@ -26,6 +26,7 @@ from visualization.chart import generate_trend_chart
 from notification.email_template import FundReport, generate_combined_email_html, generate_combined_email_subject
 from notification.sender import send_combined_report, send_error_notification
 from scheduler.calendar import should_run_task
+from data.us_market import fetch_nq_futures
 
 logger = get_logger("jobs")
 
@@ -97,12 +98,21 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         if market and market.shanghai_index:
             market_drop = market.shanghai_index.change
         
-        if fund.type == "ETF_Feeder":
+        if fund.type in ("ETF_Feeder", "QDII"):
             strategy_result = evaluate_etf_strategy(metrics, asset_class, fund.name, market_drop)
         else:
             strategy_result = evaluate_bond_strategy(metrics, asset_class, fund.name)
         
         logger.info(f"策略决策: {strategy_result.decision.value} (confidence: {strategy_result.confidence:.0%})")
+        
+        # 6b. QDII 基金: 获取 NQ=F 期货数据
+        nq_futures = None
+        if fund.type == "QDII":
+            nq_futures = fetch_nq_futures()
+            if nq_futures:
+                logger.info(f"NQ=F 期货参考: {nq_futures.change_pct:+.2f}% [来源: {nq_futures.data_source}]")
+            else:
+                logger.warning("NQ=F 期货数据获取失败，仅使用基金历史数据决策")
         
         # 6b. AI主导决策（专业化Prompt）
         # 构建动态阈值用于债券Prompt
@@ -124,7 +134,8 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             metrics=metrics,
             holdings=holdings,
             market=market,
-            dynamic_thresholds=dynamic_thresholds
+            dynamic_thresholds=dynamic_thresholds,
+            nq_futures=nq_futures
         )
         
         if ai_result:
@@ -200,12 +211,15 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             synthesis_method=synthesized.synthesis_method,
             asset_class=asset_class,
             # v3.1 补仓倍数
-            buy_multiplier=final_multiplier
+            buy_multiplier=final_multiplier,
+            # QDII NQ=F 期货参考
+            nq_change_pct=nq_futures.change_pct if nq_futures else None,
+            nq_data_source=nq_futures.data_source if nq_futures else None
         )
         
         # 9. 记录决策日志
         db = get_database()
-        context_json = build_context(fund, valuation, metrics, holdings, market)
+        context_json = build_context(fund, valuation, metrics, holdings, market, nq_futures=nq_futures)
         db.save_decision_log(
             fund_code=fund.code,
             fund_name=fund.name,
@@ -343,7 +357,15 @@ def run_alert_task():
             hs300_change=market_ctx.hs300_index.change if market_ctx.hs300_index else 0
         )
     
-    # 2. 获取各基金数据
+    # 2. QDII 期货数据 (提前获取，避免重复请求)
+    nq_data = None
+    has_qdii = any(f.type == "QDII" for f in config.funds)
+    if has_qdii:
+        nq_data = fetch_nq_futures()
+        if nq_data:
+            logger.info(f"盘中预警 NQ=F 期货: {nq_data.change_pct:+.2f}% [来源: {nq_data.data_source}]")
+    
+    # 3. 获取各基金数据
     fund_data_list: list[AlertFundData] = []
     
     for fund in config.funds:
@@ -400,7 +422,11 @@ def run_alert_task():
                 # 新增字段 v2.0
                 percentile_60=metrics.percentile_60,
                 percentile_500=metrics.percentile_500,
-                volatility_60=metrics.volatility_60
+                volatility_60=metrics.volatility_60,
+                # QDII NQ=F 期货参考
+                nq_change_pct=nq_data.change_pct if (fund.type == "QDII" and nq_data) else None,
+                nq_data_source=nq_data.data_source if (fund.type == "QDII" and nq_data) else None,
+                nq_market_status=nq_data.market_status if (fund.type == "QDII" and nq_data) else None
             )
             fund_data_list.append(fund_data)
             

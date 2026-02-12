@@ -7,6 +7,7 @@ FundPilot-AI 资产分类与动态阈值配置
 - COMMODITY_CYCLE: 周期商品ETF，强周期高波动
 - BOND_ENHANCED: 二级债基，含股票仓位
 - BOND_PURE: 纯债基金，低波动利率敏感
+- US_EQUITY_INDEX: 美股指数QDII，跟踪纳指等美股指数
 """
 
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ class AssetClass(Enum):
     COMMODITY_CYCLE = "COMMODITY_CYCLE"     # 周期商品ETF
     BOND_ENHANCED = "BOND_ENHANCED"         # 二级债基
     BOND_PURE = "BOND_PURE"                 # 纯债基金
+    US_EQUITY_INDEX = "US_EQUITY_INDEX"     # 美股指数QDII（纳指等）
     DEFAULT_ETF = "DEFAULT_ETF"             # 默认ETF（未分类）
     DEFAULT_BOND = "DEFAULT_BOND"           # 默认债券（未分类）
 
@@ -92,6 +94,17 @@ ASSET_THRESHOLDS: dict[AssetClass, StrategyThresholds] = {
         consensus_high_threshold=55.0,
         ai_weight=0.3,  # 纯债规则更可靠
         description="纯债基金：低波动利率敏感"
+    ),
+    
+    AssetClass.US_EQUITY_INDEX: StrategyThresholds(
+        zone_thresholds=(10.0, 25.0, 75.0, 90.0),  # 美股长牛，低估罕见
+        ma_base_threshold=-3.5,   # 美股波动较大
+        circuit_breaker_drop=-5.0,  # 纳指单日跌5%很罕见
+        circuit_breaker_rise=5.0,
+        consensus_low_threshold=25.0,
+        consensus_high_threshold=75.0,
+        ai_weight=0.55,  # 美股受宏观政策影响大，AI权重稍高
+        description="美股指数QDII：跟踪纳指等，长期上涨趋势，高波动"
     ),
     
     AssetClass.DEFAULT_ETF: StrategyThresholds(
@@ -169,7 +182,13 @@ def infer_asset_class(fund_type: str, fund_name: str) -> str:
     """
     name_lower = fund_name.lower()
     
-    if fund_type == "ETF_Feeder":
+    if fund_type == "QDII":
+        if any(kw in name_lower for kw in ["纳斯达克", "纳指", "nasdaq", "标普", "s&p"]):
+            return AssetClass.US_EQUITY_INDEX.value
+        else:
+            return AssetClass.US_EQUITY_INDEX.value  # QDII 默认归类为美股指数
+    
+    elif fund_type == "ETF_Feeder":
         if "黄金" in fund_name or "gold" in name_lower:
             return AssetClass.GOLD_ETF.value
         elif any(kw in fund_name for kw in ["有色", "金属", "铜", "铝", "锌", "稀土", "钢铁", "煤炭", "石油", "原油"]):

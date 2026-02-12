@@ -24,6 +24,10 @@ class AlertFundData:
     percentile_60: Optional[float] = None   # 60日分位
     percentile_500: Optional[float] = None  # 500日分位
     volatility_60: Optional[float] = None   # 60日年化波动率
+    # QDII NQ=F 期货参考
+    nq_change_pct: Optional[float] = None     # NQ=F 期货涨跌幅
+    nq_data_source: Optional[str] = None      # 数据来源
+    nq_market_status: Optional[str] = None    # 期货市场状态
 
 
 @dataclass
@@ -63,7 +67,7 @@ def _get_zone_style(zone: str) -> tuple[str, str]:
 
 
 def _get_fund_type_short(fund_type: str) -> str:
-    return {"Bond": "债", "ETF_Feeder": "ETF"}.get(fund_type, "")
+    return {"Bond": "债", "ETF_Feeder": "ETF", "QDII": "QDII"}.get(fund_type, "")
 
 
 # ============================================================
@@ -429,6 +433,20 @@ def generate_alert_email_html(
             zone_bg=zone_bg,
             zone_color=zone_color
         ))
+        
+        # QDII 基金: 追加 NQ=F 期货参考行
+        if fund.nq_change_pct is not None:
+            nq_color = _get_change_color(fund.nq_change_pct)
+            src = "📡 NQ=F" if fund.nq_data_source == "nq_futures" else "📡 T-1"
+            status = f" ({fund.nq_market_status})" if fund.nq_market_status else ""
+            fund_rows.append(f'''<tr>
+    <td></td>
+    <td colspan="2" style="font-size: 11px; color: #64748b; padding: 2px 8px 10px; border-bottom: 1px solid #f0f0f0;">
+        {src}: <strong style="color: {nq_color};">{fund.nq_change_pct:+.2f}%</strong>
+        <span style="color: #94a3b8;">{status} 仅供参考</span>
+    </td>
+    <td></td><td></td>
+</tr>''')
     
     # 量化指标行
     metrics_rows = []

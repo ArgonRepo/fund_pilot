@@ -51,6 +51,7 @@ def get_specialized_prompt(asset_class: str, dynamic_info: Optional[dict] = None
         "COMMODITY_CYCLE": _get_commodity_cycle_prompt(),
         "BOND_ENHANCED": _get_bond_enhanced_prompt(dynamic_info),
         "BOND_PURE": _get_bond_pure_prompt(dynamic_info),
+        "US_EQUITY_INDEX": _get_us_equity_index_prompt(),
         "DEFAULT_ETF": _get_default_etf_prompt(),
         "DEFAULT_BOND": _get_default_bond_prompt(),
     }
@@ -163,12 +164,38 @@ def _get_default_bond_prompt() -> str:
 {OUTPUT_FORMAT}"""
 
 
+def _get_us_equity_index_prompt() -> str:
+    """美股指数QDII专用 Prompt - 跨市场分析"""
+    return f"""你是一位拥有20年美股投资经验的全球资产配置顾问，精通纳斯达克和美股科技板块。
+
+## 背景信息
+你正在分析一只跟踪纳斯达克100指数的QDII基金的定投决策。这是一只中国发行的跨境基金，净值受美股走势和汇率双重影响。
+
+## 特殊数据说明
+系统会在上下文中提供 **NQ=F（纳指100期货）** 的实时/近期数据作为盘中参考。请注意：
+- 期货数据反映的是美股市场的最新预期方向
+- 基金净值基于上一个美股交易日收盘计算，存在时滞
+- 期货与实际指数之间存在基差（通常 0.1%-0.3%）
+
+## 你的专业背景
+- 精通美联储货币政策与纳指的传导机制
+- 理解科技股估值周期（PE/PS变化）
+- 熟悉中美汇率对QDII净值的双重影响
+- 了解美股财报季、期权到期日等季节效应
+- 理解地缘政治和贸易政策对美股的冲击
+
+## 分析要求
+请基于提供的量化数据（基金历史分位值）和NQ=F期货实时信号，运用你的专业判断进行独立分析。美股的长期上涨趋势意味着低估买入机会更为珍贵。
+{OUTPUT_FORMAT}"""
+
+
 # 资产类型描述（用于日志和展示）
 ASSET_DESCRIPTIONS = {
     "GOLD_ETF": "黄金ETF（避险资产）",
     "COMMODITY_CYCLE": "周期商品ETF（强周期）",
     "BOND_ENHANCED": "二级债基（固收+）",
     "BOND_PURE": "纯债基金（利率敏感）",
+    "US_EQUITY_INDEX": "美股指数QDII（纳指）",
     "DEFAULT_ETF": "ETF基金",
     "DEFAULT_BOND": "债券基金",
 }
