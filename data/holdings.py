@@ -1,24 +1,23 @@
 """
 FundPilot 持仓穿透分析模块
-获取基金重仓股信息及实时行情（使用 AKShare）
+获取基金重仓股信息及实时行情（使用腾讯财经接口，云服务器兼容）
 """
 
 import time
 from dataclasses import dataclass
-from http.client import RemoteDisconnected
 from typing import Optional
 
 import akshare as ak
-import pandas as pd
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from requests.exceptions import ConnectionError, RequestException
 
 from core.logger import get_logger
 from core.database import get_database
 from core.config import FundConfig
-from core.http_client import request_stats
+from core.http_client import get_text, request_stats
 
 logger = get_logger("holdings")
+
+# 腾讯财经股票行情 API（云服务器可靠访问）
+TENCENT_QUOTE_API = "http://qt.gtimg.cn/q={codes}"
 
 # AKShare 请求间隔（秒）
 AKSHARE_REQUEST_INTERVAL = 1.0
@@ -42,63 +41,76 @@ class HoldingsInsight:
     summary: str             # 汇总描述
 
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=2, min=2, max=10),
-    retry=retry_if_exception_type((ConnectionError, RemoteDisconnected, RequestException)),
-    reraise=True
-)
-def _fetch_a_share_spot_em():
-    """获取全部 A 股实时行情（带重试）"""
-    return ak.stock_zh_a_spot_em()
+def _normalize_stock_code(code: str) -> str:
+    """规范化股票代码（添加市场前缀）"""
+    code = code.strip()
+    if code.startswith(("sh", "sz")):
+        return code
+    # 6 开头上海，其他深圳
+    if code.startswith("6"):
+        return f"sh{code}"
+    else:
+        return f"sz{code}"
 
 
-def _fetch_a_share_spot() -> Optional[pd.DataFrame]:
+def _batch_fetch_stock_quotes(stock_codes: list[str]) -> dict[str, Optional[float]]:
     """
-    获取全部 A 股实时行情（批量）
-
-    Returns:
-        DataFrame，失败返回 None
-    """
-    try:
-        time.sleep(AKSHARE_REQUEST_INTERVAL)
-        df = _fetch_a_share_spot_em()
-        if df is not None and not df.empty:
-            return df
-    except Exception as e:
-        logger.warning(f"获取 A 股实时行情失败: {e}")
-    return None
-
-
-def _lookup_stock_change(spot_df: Optional[pd.DataFrame], stock_code: str) -> Optional[float]:
-    """
-    从 A 股行情快照中查询某只股票的涨跌幅
+    批量获取股票实时涨跌幅（通过腾讯财经接口，一次请求）
 
     Args:
-        spot_df: A 股实时行情 DataFrame
-        stock_code: 股票代码（纯数字，如 600519）
+        stock_codes: 股票代码列表（如 ["sh600519", "sz000001"]）
 
     Returns:
-        涨跌幅百分比，找不到返回 None
+        {stock_code: 涨跌幅} 字典
     """
-    if spot_df is None:
-        return None
+    results = {}
+    if not stock_codes:
+        return results
+
+    url = TENCENT_QUOTE_API.format(codes=",".join(stock_codes))
 
     try:
-        # 去掉市场前缀（sh/sz），只保留纯数字代码
-        code = stock_code.strip()
-        if code.startswith(("sh", "sz")):
-            code = code[2:]
+        text = get_text(url, source="default", timeout=10, encoding="gbk")
 
-        row = spot_df[spot_df["代码"] == code]
-        if row.empty:
-            return None
+        if not text:
+            return {code: None for code in stock_codes}
 
-        change = float(row.iloc[0].get("涨跌幅", 0))
-        return round(change, 2)
+        for line in text.strip().split(";"):
+            line = line.strip()
+            if not line or "=" not in line or '""' in line:
+                continue
+
+            try:
+                # 格式: v_sh600519="1~贵州茅台~600519~1800.00~1790.00~..."
+                prefix = line.split("=")[0].strip()
+                code = prefix.split("_")[-1]  # sh600519
+
+                data = line.split('"')[1].split("~")
+                if len(data) < 5:
+                    continue
+
+                yesterday_close = float(data[4])
+                current_price = float(data[3])
+
+                if yesterday_close == 0:
+                    results[code] = None
+                    continue
+
+                change = (current_price - yesterday_close) / yesterday_close * 100
+                results[code] = round(change, 2)
+
+            except Exception:
+                continue
+
     except Exception as e:
-        logger.debug(f"查询股票 {stock_code} 行情失败: {e}")
-        return None
+        logger.warning(f"批量获取股票行情失败: {e}")
+
+    # 补充未获取到的代码
+    for code in stock_codes:
+        if code not in results:
+            results[code] = None
+
+    return results
 
 
 def fetch_fund_holdings(fund_code: str, underlying_etf: Optional[str] = None) -> list[tuple[str, str, float]]:
@@ -199,13 +211,14 @@ def get_holdings_with_quotes(fund_config: FundConfig) -> Optional[HoldingsInsigh
     if not holdings_data:
         return None
 
-    # 一次性获取全部 A 股实时行情，然后逐个查询
-    logger.info("获取 A 股实时行情快照...")
-    spot_df = _fetch_a_share_spot()
+    # 批量获取所有重仓股行情（一次请求）
+    norm_codes = [_normalize_stock_code(code) for code, _, _ in holdings_data]
+    logger.info(f"批量获取 {len(norm_codes)} 只重仓股行情...")
+    quotes = _batch_fetch_stock_quotes(norm_codes)
 
     holdings = []
-    for code, name, weight in holdings_data:
-        change = _lookup_stock_change(spot_df, code)
+    for (code, name, weight), norm_code in zip(holdings_data, norm_codes):
+        change = quotes.get(norm_code)
         holdings.append(StockHolding(code, name, weight, change))
 
     # 按涨跌幅排序
