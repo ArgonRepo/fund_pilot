@@ -4,10 +4,13 @@ FundPilot 市场环境数据模块
 """
 
 import time
+from http.client import RemoteDisconnected
 from dataclasses import dataclass
 from typing import Optional
 
 import akshare as ak
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from requests.exceptions import ConnectionError, RequestException
 
 from core.logger import get_logger
 from core.http_client import request_stats
@@ -43,6 +46,17 @@ class MarketContext:
     summary: str                           # 市场概述
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=2, max=10),
+    retry=retry_if_exception_type((ConnectionError, RemoteDisconnected, RequestException)),
+    reraise=True
+)
+def _fetch_index_spot_em():
+    """获取沪深重要指数（带重试）"""
+    return ak.stock_zh_index_spot_em(symbol="沪深重要指数")
+
+
 def fetch_market_indices() -> dict[str, MarketIndex]:
     """
     获取市场指数行情（通过 AKShare 东方财富接口）
@@ -53,8 +67,8 @@ def fetch_market_indices() -> dict[str, MarketIndex]:
     try:
         time.sleep(AKSHARE_REQUEST_INTERVAL)
 
-        # 获取沪深重要指数实时行情
-        df = ak.stock_zh_index_spot_em(symbol="沪深重要指数")
+        # 获取沪深重要指数实时行情（带重试）
+        df = _fetch_index_spot_em()
 
         if df is None or df.empty:
             request_stats.record_failure()

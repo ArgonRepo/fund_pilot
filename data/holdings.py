@@ -5,10 +5,13 @@ FundPilot 持仓穿透分析模块
 
 import time
 from dataclasses import dataclass
+from http.client import RemoteDisconnected
 from typing import Optional
 
 import akshare as ak
 import pandas as pd
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from requests.exceptions import ConnectionError, RequestException
 
 from core.logger import get_logger
 from core.database import get_database
@@ -39,6 +42,17 @@ class HoldingsInsight:
     summary: str             # 汇总描述
 
 
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=2, max=10),
+    retry=retry_if_exception_type((ConnectionError, RemoteDisconnected, RequestException)),
+    reraise=True
+)
+def _fetch_a_share_spot_em():
+    """获取全部 A 股实时行情（带重试）"""
+    return ak.stock_zh_a_spot_em()
+
+
 def _fetch_a_share_spot() -> Optional[pd.DataFrame]:
     """
     获取全部 A 股实时行情（批量）
@@ -48,7 +62,7 @@ def _fetch_a_share_spot() -> Optional[pd.DataFrame]:
     """
     try:
         time.sleep(AKSHARE_REQUEST_INTERVAL)
-        df = ak.stock_zh_a_spot_em()
+        df = _fetch_a_share_spot_em()
         if df is not None and not df.empty:
             return df
     except Exception as e:
