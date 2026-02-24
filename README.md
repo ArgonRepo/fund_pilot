@@ -217,15 +217,6 @@ tail -f logs/fundpilot.log        # 查看日志文件
 ## 调试命令
 
 ```bash
-# 强制运行决策任务（跳过交易日判断）
-FUND_PILOT_FORCE_RUN=true python3 -c "
-from scheduler import calendar
-calendar.is_trading_day = lambda d=None: True
-calendar.should_run_task = lambda d=None: True
-from scheduler.jobs import run_decision_task
-run_decision_task()
-"
-
 # 强制运行盘中快报
 FUND_PILOT_FORCE_RUN=true python3 -c "
 from scheduler import calendar
@@ -233,6 +224,15 @@ calendar.is_trading_day = lambda d=None: True
 calendar.should_run_task = lambda d=None: True
 from scheduler.jobs import run_alert_task
 run_alert_task()
+"
+
+# 强制运行决策任务（跳过交易日判断）
+FUND_PILOT_FORCE_RUN=true python3 -c "
+from scheduler import calendar
+calendar.is_trading_day = lambda d=None: True
+calendar.should_run_task = lambda d=None: True
+from scheduler.jobs import run_decision_task
+run_decision_task()
 "
 ```
 
