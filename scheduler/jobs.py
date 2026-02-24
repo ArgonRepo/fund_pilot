@@ -171,7 +171,12 @@ def run_alert_task():
             zone = get_percentile_zone(metrics.percentile_250)
             
             # 获取持仓信息 (用于穿透分析)
-            holdings = get_holdings_with_quotes(fund)
+            # 黄金ETF / QDII 等不含股票持仓的基金，跳过持仓获取
+            from strategy.asset_config import infer_asset_class
+            _asset_class = fund.asset_class or infer_asset_class(fund.type, fund.name)
+            holdings = None
+            if _asset_class not in ("GOLD_ETF", "US_EQUITY_INDEX") and fund.type != "QDII":
+                holdings = get_holdings_with_quotes(fund)
             holdings_txt = None
             if holdings and holdings.holdings:
                 # 取波动最大的前3只重仓股
