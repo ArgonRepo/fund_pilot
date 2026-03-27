@@ -176,12 +176,12 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         logger.info(f"最终决策: {synthesized.final_decision} ({synthesized.synthesis_method})")
         
         # 7. 生成图表
-        recent_10 = get_recent_nav(history, 10)
-        recent_10_asc = list(reversed(recent_10))
+        recent_90 = get_recent_nav(history, 90)  # 约 4 个月交易日 (90个交易日)
+        recent_90_asc = list(reversed(recent_90))
         
         chart_image = generate_trend_chart(
             fund_name=fund.name,
-            history_10d=recent_10_asc,
+            history_data=recent_90_asc,
             estimate_today=valuation.estimate_nav,
             ma_60=metrics.ma_60,
             estimate_change=valuation.estimate_change

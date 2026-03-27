@@ -1,6 +1,6 @@
 """
 FundPilot-AI 可视化模块
-生成 "10+1" 趋势图
+生成近期趋势图
 """
 
 import io
@@ -58,17 +58,17 @@ COLOR_GRID = '#ecf0f1'     # 网格线
 
 def generate_trend_chart(
     fund_name: str,
-    history_10d: list[tuple[date, float]],
+    history_data: list[tuple[date, float]],
     estimate_today: float,
     ma_60: float,
     estimate_change: Optional[float] = None
 ) -> bytes:
     """
-    生成 "10+1" 趋势图
+    生成趋势图
     
     Args:
         fund_name: 基金名称
-        history_10d: 前 10 个交易日净值 [(日期, 净值), ...]（按日期升序）
+        history_data: 近期历史净值 [(日期, 净值), ...]（按日期升序）
         estimate_today: 今日预估净值
         ma_60: 60日均线
         estimate_change: 预估涨跌幅
@@ -76,13 +76,13 @@ def generate_trend_chart(
     Returns:
         PNG 图片字节流
     """
-    if not history_10d:
+    if not history_data:
         logger.warning("没有历史数据，无法生成图表")
         return b""
     
     # 准备数据
-    dates = [d for d, _ in history_10d]
-    navs = [nav for _, nav in history_10d]
+    dates = [d for d, _ in history_data]
+    navs = [nav for _, nav in history_data]
     
     # 今日数据
     today = date.today()
@@ -140,7 +140,7 @@ def generate_trend_chart(
     
     # 日期格式
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d'))
-    ax.xaxis.set_major_locator(mdates.DayLocator(interval=2))
+    ax.xaxis.set_major_locator(mdates.DayLocator(interval=10))
     plt.xticks(rotation=45)
     
     # 网格

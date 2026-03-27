@@ -148,6 +148,6 @@ def calculate_nav_stats(nav_history: list[tuple[date, float]]) -> dict:
     }
 
 
-def get_recent_nav(nav_history: list[tuple[date, float]], count: int = 10) -> list[tuple[date, float]]:
+def get_recent_nav(nav_history: list[tuple[date, float]], count: int = 90) -> list[tuple[date, float]]:
     """获取最近 N 天净值（用于图表）"""
     return nav_history[:count]
