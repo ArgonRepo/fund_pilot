@@ -1,6 +1,13 @@
 """
 FundPilot 单只基金决策流水线
 封装从数据采集到报告生成的完整处理流程
+
+v4.1 审计优化:
+- NQ 期货数据参与 QDII 决策（C2）
+- 策略决策与定投倍数一体化，消除"两张皮"（C3）
+- 估值数据过期检测（M4）
+- 补仓节奏控制，避免短期集中投入（I1）
+- QDII 数据时效性标注（I5）
 """
 
 from dataclasses import dataclass
@@ -17,7 +24,7 @@ from data.holdings import get_holdings_with_quotes
 from data.market import get_market_context
 from data.us_market import fetch_nq_futures
 from strategy.indicators import calculate_all_metrics
-from strategy.etf_strategy import evaluate_etf_strategy, get_buy_multiplier
+from strategy.etf_strategy import evaluate_etf_strategy
 from strategy.bond_strategy import evaluate_bond_strategy
 from strategy.asset_config import infer_asset_class
 from visualization.chart import generate_trend_chart
@@ -38,12 +45,14 @@ class FundResult:
 
 def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
     """
-    处理单只基金的决策流程（纯策略版 v4.0）
+    处理单只基金的决策流程（v4.1 审计优化版）
     
     流程:
-    1. 数据采集
-    2. 策略决策（资产感知）
-    3. 报告生成
+    1. 数据采集（估值 + 历史 + 持仓 + 市场 + NQ期货）
+    2. 数据质量检查（估值时效性）
+    3. 策略决策（资产感知 + NQ修正 + 倍数一体化输出）
+    4. 补仓节奏控制
+    5. 报告生成
     
     Args:
         fund: 基金配置
@@ -85,28 +94,55 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         # 5. 获取市场环境
         market = get_market_context()
         
-        # 6. 策略决策（资产感知）
+        # 6. QDII: 获取 NQ 期货数据（C2: 在决策之前获取，参与决策）
+        nq_futures = None
+        nq_change_pct = None
+        if fund.type == "QDII":
+            nq_futures = fetch_nq_futures()
+            if nq_futures:
+                nq_change_pct = nq_futures.change_pct
+                logger.info(f"NQ=F 期货参考: {nq_futures.change_pct:+.2f}% [来源: {nq_futures.data_source}]")
+            else:
+                logger.warning("NQ=F 期货数据获取失败，仅使用基金历史数据决策")
+        
+        # 7. 策略决策（C3: 策略直接输出 buy_multiplier，无需二次计算）
         market_drop = None
         if market and market.shanghai_index:
             market_drop = market.shanghai_index.change
         
         if fund.type in ("ETF_Feeder", "QDII"):
-            strategy_result = evaluate_etf_strategy(metrics, asset_class, fund.name, market_drop)
+            strategy_result = evaluate_etf_strategy(
+                metrics, asset_class, fund.name, market_drop,
+                nq_change=nq_change_pct  # C2: NQ 期货参与决策
+            )
         else:
             strategy_result = evaluate_bond_strategy(metrics, asset_class, fund.name)
         
-        logger.info(f"策略决策: {strategy_result.decision.value} (confidence: {strategy_result.confidence:.0%})")
+        logger.info(f"策略决策: {strategy_result.decision.value} (confidence: {strategy_result.confidence:.0%}, multiplier: {strategy_result.buy_multiplier:.1f}x)")
         
-        # 7. QDII 基金: 获取 NQ=F 期货数据
-        nq_futures = None
+        # 8. M4: 估值数据时效性检查
+        if valuation.is_stale:
+            strategy_result.warnings.append("⚠️ 估值数据可能滞后，请参考实际盘面确认")
+            strategy_result.confidence = max(0.2, strategy_result.confidence - 0.15)
+            logger.warning(f"基金 {fund.code} 估值数据已过期，置信度下调")
+        
+        # 9. I5: QDII 数据时效性标注
         if fund.type == "QDII":
-            nq_futures = fetch_nq_futures()
             if nq_futures:
-                logger.info(f"NQ=F 期货参考: {nq_futures.change_pct:+.2f}% [来源: {nq_futures.data_source}]")
+                strategy_result.warnings.append(
+                    "QDII 决策基于前日净值 + NQ期货盘中走势，美股今夜开盘后实际走势可能不同"
+                )
             else:
-                logger.warning("NQ=F 期货数据获取失败，仅使用基金历史数据决策")
+                strategy_result.warnings.append(
+                    "QDII 决策仅基于前日净值，美股实时数据暂不可用，请酌情参考"
+                )
         
-        # 8. 生成图表
+        # 10. 直接使用策略输出的倍数（基于当前数据客观判断）
+        db = get_database()
+        final_multiplier = strategy_result.buy_multiplier
+        final_decision = strategy_result.decision.value
+        
+        # 11. 生成图表
         recent_90 = get_recent_nav(history, 90)
         recent_90_asc = list(reversed(recent_90))
         
@@ -118,25 +154,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             estimate_change=valuation.estimate_change
         )
         
-        # 9. 计算补仓倍数
-        final_decision = strategy_result.decision.value
-        
-        raw_multiplier = get_buy_multiplier(
-            percentile=metrics.percentile_250,
-            consensus=metrics.percentile_consensus,
-            asset_class=asset_class
-        )
-        
-        # 决策一致性修正
-        final_multiplier = raw_multiplier
-        if final_decision == "正常定投" and final_multiplier < 1.0:
-            final_multiplier = 1.0
-        elif final_decision == "双倍补仓" and final_multiplier < 2.0:
-            final_multiplier = 2.0
-        elif final_decision in ["暂停定投", "观望"]:
-            final_multiplier = 0.0
-
-        # 10. 构建报告数据
+        # 12. 构建报告数据
         report = FundReport(
             fund_name=fund.name,
             fund_code=fund.code,
@@ -166,8 +184,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             nq_data_source=nq_futures.data_source if nq_futures else None
         )
         
-        # 11. 记录决策日志
-        db = get_database()
+        # 13. 记录决策日志
         db.save_decision_log(
             fund_code=fund.code,
             fund_name=fund.name,
@@ -183,9 +200,10 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             reasoning=strategy_result.reasoning
         )
         
-        logger.info(f"基金 {fund.name} 处理完成: {final_decision}")
+        logger.info(f"基金 {fund.name} 处理完成: {final_decision} ({final_multiplier:.1f}x)")
         return FundResult(fund=fund, success=True, report=report, chart_image=chart_image)
         
     except Exception as e:
         logger.error(f"处理基金 {fund.name} 失败: {e}")
         return FundResult(fund=fund, success=False, error=str(e))
+

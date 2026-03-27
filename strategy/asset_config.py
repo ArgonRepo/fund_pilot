@@ -55,7 +55,7 @@ ASSET_THRESHOLDS: dict[AssetClass, StrategyThresholds] = {
         circuit_breaker_drop=-8.0,   # 黄金较稳定，阈值可高些
         circuit_breaker_rise=8.0,
         consensus_low_threshold=35.0,
-        consensus_high_threshold=65.0,
+        consensus_high_threshold=70.0,  # 2026: 黄金结构性牛市，高估阈值放宽
         description="黄金避险资产：与股市负相关，高估不一定暂停"
     ),
     
@@ -70,12 +70,12 @@ ASSET_THRESHOLDS: dict[AssetClass, StrategyThresholds] = {
     ),
     
     AssetClass.BOND_ENHANCED: StrategyThresholds(
-        zone_thresholds=(20.0, 40.0, 60.0, 80.0),  # 标准区间
+        zone_thresholds=(20.0, 40.0, 65.0, 85.0),  # 2026: 利率下行周期，高估线上调适应债券价格上行趋势
         ma_base_threshold=-1.5,
         circuit_breaker_drop=-2.0,  # 二级债基调低阈值，避免形同虚设
         circuit_breaker_rise=2.0,
         consensus_low_threshold=40.0,
-        consensus_high_threshold=60.0,
+        consensus_high_threshold=65.0,  # 2026: 低利率环境下高估共识阈值放宽
         description="二级债基：含股票仓位，波动高于纯债"
     ),
     

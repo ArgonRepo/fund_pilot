@@ -166,7 +166,8 @@ def evaluate_bond_strategy(
                 confidence=0.3,
                 reasoning=f"触发熔断：债券单日大跌 {metrics.daily_change:.2f}%（阈值 {circuit_breaker:.1f}%），极为罕见，建议冷静观察后决策",
                 zone="熔断",
-                warnings=[f"债券极端行情：跌幅罕见（{asset_class}），可能有重大风险事件"]
+                warnings=[f"债券极端行情：跌幅罕见（{asset_class}），可能有重大风险事件"],
+                buy_multiplier=0.0
             )
         if metrics.daily_change > thresholds.circuit_breaker_rise:
             return StrategyResult(
@@ -174,7 +175,8 @@ def evaluate_bond_strategy(
                 confidence=0.3,
                 reasoning=f"触发熔断：债券单日异常大涨 {metrics.daily_change:+.2f}%（阈值 {thresholds.circuit_breaker_rise:.1f}%），建议观望而非追高",
                 zone="熔断",
-                warnings=["债券异常大涨，可能是利率急降或市场情绪过热，建议观望"]
+                warnings=["债券异常大涨，可能是利率急降或市场情绪过热，建议观望"],
+                buy_multiplier=0.0
             )
     
     signal = detect_bond_signal(metrics, asset_class)
@@ -211,11 +213,13 @@ def evaluate_bond_strategy(
             # 高估区但有强烈信号，可以小额定投
             decision = Decision.NORMAL_BUY
             confidence = 0.5
+            buy_multiplier = 0.5
             reasoning = f"虽有{signal.signal_type}信号（强度 {signal.strength:.0%}），但250日分位 {metrics.percentile_250:.0f}% 偏高，建议小额定投"
             warnings.append("高估区补仓需控制仓位，建议减半")
         else:
             decision = Decision.HOLD
             confidence = 0.7
+            buy_multiplier = 0.0
             reasoning = f"250日分位 {metrics.percentile_250:.0f}% 处于高位，债券估值偏贵，建议观望"
         
         zone = "高估区"
@@ -231,7 +235,8 @@ def evaluate_bond_strategy(
             confidence=confidence,
             reasoning=reasoning,
             zone=zone,
-            warnings=warnings
+            warnings=warnings,
+            buy_multiplier=buy_multiplier
         )
     
     # === 正常估值区域 ===
@@ -240,6 +245,7 @@ def evaluate_bond_strategy(
         if signal.strength > 0.7:
             decision = Decision.DOUBLE_BUY
             confidence = 0.8
+            buy_multiplier = min(2.0, 1.5 + signal.strength * 0.5)
             reasoning = f"债券出现{signal.signal_type}信号（强度 {signal.strength:.0%}），难得的加仓机会"
             
             # 多周期共识增强
@@ -249,28 +255,50 @@ def evaluate_bond_strategy(
         else:
             decision = Decision.NORMAL_BUY
             confidence = 0.7
+            buy_multiplier = 1.0
             reasoning = f"债券{signal.signal_type}，可适度加仓"
         
         zone = "机会区"
     else:
         # 正常波动：根据资产类型决定默认策略
-        # 二级债基应保持定投节奏，纯债可观望
         if asset_class == "BOND_ENHANCED":
-            # 二级债基的投资价值在于平滑利率周期风险，应保持定投节奏
-            decision = Decision.NORMAL_BUY
-            confidence = 0.6
-            if metrics.daily_change is not None:
-                if metrics.daily_change > 0:
-                    reasoning = f"二级债基上涨 {metrics.daily_change:+.2f}%，保持定投节奏"
+            # M2: 二级债基正常区增加分位感知
+            if metrics.percentile_250 < 40:
+                # 低分位：积极定投
+                decision = Decision.NORMAL_BUY
+                confidence = 0.7
+                buy_multiplier = 1.0
+                if metrics.daily_change is not None:
+                    if metrics.daily_change > 0:
+                        reasoning = f"二级债基上涨 {metrics.daily_change:+.2f}%，分位{metrics.percentile_250:.0f}%偏低，保持定投节奏"
+                    else:
+                        reasoning = f"二级债基微跌 {metrics.daily_change:+.2f}%，分位{metrics.percentile_250:.0f}%偏低，正是定投好时机"
                 else:
-                    reasoning = f"二级债基微跌 {metrics.daily_change:+.2f}%，正是定投好时机"
+                    reasoning = f"二级债基平稳运行，分位{metrics.percentile_250:.0f}%偏低，建议保持定投节奏"
+            elif metrics.percentile_250 < 55:
+                # 中等分位：常规定投
+                decision = Decision.NORMAL_BUY
+                confidence = 0.55
+                buy_multiplier = 0.8
+                if metrics.daily_change is not None:
+                    reasoning = f"二级债基今日 {metrics.daily_change:+.2f}%，分位{metrics.percentile_250:.0f}%处于均衡水平，常规定投"
+                else:
+                    reasoning = f"二级债基平稳运行，分位{metrics.percentile_250:.0f}%处于均衡水平，常规定投"
             else:
-                reasoning = "二级债基平稳运行，建议保持定投节奏"
+                # 接近偏高区：观望等回调
+                decision = Decision.HOLD
+                confidence = 0.5
+                buy_multiplier = 0.0
+                if metrics.daily_change is not None:
+                    reasoning = f"二级债基今日 {metrics.daily_change:+.2f}%，分位{metrics.percentile_250:.0f}%接近偏高区，可等回调再定投"
+                else:
+                    reasoning = f"二级债基分位{metrics.percentile_250:.0f}%接近偏高区，建议等回调再定投"
             zone = "正常区"
         else:
             # 纯债或其他类型，可观望等待信号
             decision = Decision.HOLD
             confidence = 0.6
+            buy_multiplier = 0.0
             if metrics.daily_change is not None:
                 if metrics.daily_change > 0:
                     reasoning = f"债券今日上涨 {metrics.daily_change:+.2f}%，保持持有即可"
@@ -280,12 +308,13 @@ def evaluate_bond_strategy(
                 reasoning = "债券平稳运行，保持持有即可"
             zone = "正常区"
     
-    logger.info(f"债券策略决策: {decision.value} (信号: {signal.signal_type})")
+    logger.info(f"债券策略决策: {decision.value} (信号: {signal.signal_type}, 倍数: {buy_multiplier:.1f}x)")
     
     return StrategyResult(
         decision=decision,
         confidence=confidence,
         reasoning=reasoning,
         zone=zone,
-        warnings=warnings
+        warnings=warnings,
+        buy_multiplier=buy_multiplier
     )

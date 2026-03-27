@@ -155,7 +155,7 @@ def run_alert_task():
                 continue
             
             # 获取历史数据计算指标（520天用于多周期分位）
-            history = get_fund_history(fund.code, days=520)
+            history = get_fund_history(fund.code, days=1250)
             if not history:
                 logger.warning(f"预警: {fund.name} 历史数据获取失败")
                 continue

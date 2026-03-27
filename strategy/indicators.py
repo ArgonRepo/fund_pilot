@@ -97,7 +97,17 @@ def get_percentile_consensus(
     high_threshold: float = 60.0
 ) -> str:
     """
-    多周期分位共识判断（支持动态阈值）
+    多周期分位共识判断（加权版 v3.1）
+    
+    权重设计: 长期 > 中期 > 短期，更适合定投的长期视角
+    - 60日(短期): 权重 1
+    - 250日(中期): 权重 2
+    - 1250日(长期): 权重 3
+    总权重: 6
+    
+    阈值:
+    - 得分 >= 5: 强共识 (至少长期+中期一致)
+    - 得分 >= 3: 弱共识 (长期一票即达标)
     
     Args:
         metrics: 量化指标
@@ -107,25 +117,31 @@ def get_percentile_consensus(
     Returns:
         共识状态: "强低估" / "弱低估" / "分歧" / "弱高估" / "强高估"
     """
-    short_low = metrics.percentile_60 < low_threshold
-    mid_low = metrics.percentile_250 < low_threshold
-    long_low = metrics.percentile_1250 < low_threshold
+    # 加权评分：长期权重 3，中期权重 2，短期权重 1
+    low_score = (1 if metrics.percentile_60 < low_threshold else 0) + \
+                (2 if metrics.percentile_250 < low_threshold else 0) + \
+                (3 if metrics.percentile_1250 < low_threshold else 0)
     
-    short_high = metrics.percentile_60 > high_threshold
-    mid_high = metrics.percentile_250 > high_threshold
-    long_high = metrics.percentile_1250 > high_threshold
+    high_score = (1 if metrics.percentile_60 > high_threshold else 0) + \
+                 (2 if metrics.percentile_250 > high_threshold else 0) + \
+                 (3 if metrics.percentile_1250 > high_threshold else 0)
     
-    low_count = sum([short_low, mid_low, long_low])
-    high_count = sum([short_high, mid_high, long_high])
-    
-    if low_count == 3:
+    if low_score >= 5:
         return "强低估"
-    elif low_count >= 2:
-        return "弱低估"
-    elif high_count == 3:
+    elif high_score >= 5:
         return "强高估"
-    elif high_count >= 2:
+    elif low_score > high_score and low_score >= 3:
+        return "弱低估"
+    elif high_score > low_score and high_score >= 3:
         return "弱高估"
+    elif low_score == high_score and low_score >= 3:
+        # 平局时以长期为准（定投关注长期价值）
+        if metrics.percentile_1250 < low_threshold:
+            return "弱低估"
+        elif metrics.percentile_1250 > high_threshold:
+            return "弱高估"
+        else:
+            return "分歧"
     else:
         return "分歧"
 
@@ -298,7 +314,7 @@ def calculate_all_metrics(
         return QuantMetrics(
             percentile_60=50.0,
             percentile_250=50.0,
-            percentile_500=50.0,
+            percentile_1250=50.0,
             ma_60=current_price,
             ma_deviation=0.0,
             max_250=current_price,

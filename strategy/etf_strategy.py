@@ -40,13 +40,15 @@ class StrategyResult:
     reasoning: str          # 决策理由
     zone: str               # 分位区间描述
     warnings: list[str]     # 风险提示列表
+    buy_multiplier: float = 1.0  # 定投倍数 (0=暂停, 0.5=减半, 1=正常, 2=双倍)
 
 
 def evaluate_etf_strategy(
     metrics: QuantMetrics, 
     asset_class: Optional[str] = None,
     fund_name: str = "",
-    market_drop: Optional[float] = None
+    market_drop: Optional[float] = None,
+    nq_change: Optional[float] = None
 ) -> StrategyResult:
     """
     评估 ETF 联接基金策略（资产感知版 v3.1）
@@ -57,12 +59,15 @@ def evaluate_etf_strategy(
     3. 动态均线偏离阈值（基于波动率 + 资产类型）
     4. 极端行情熔断机制
     5. 黄金ETF考虑大盘表现（对冲配置）
+    6. NQ期货修正（QDII 专用）
+    7. 策略决策与定投倍数一体化输出
     
     Args:
         metrics: 量化指标（包含多周期分位值）
         asset_class: 资产类别 (GOLD_ETF / COMMODITY_CYCLE 等)
         fund_name: 基金名称（用于推断 asset_class）
         market_drop: 大盘跌幅（负值，用于黄金对冲判断）
+        nq_change: NQ期货涨跌幅（QDII 专用，用于修正决策）
     
     Returns:
         StrategyResult 决策结果
@@ -81,13 +86,14 @@ def evaluate_etf_strategy(
     # === 熔断检查 ===
     if metrics.daily_change is not None:
         if metrics.daily_change < thresholds.circuit_breaker_drop:
-            # 暴跌往往是机会，改为正常定投 + 提示
+            # 定投纪律：暴跌时保持正常定投节奏，但降低置信度表示高度不确定
             return StrategyResult(
                 decision=Decision.NORMAL_BUY,
-                confidence=0.6,
-                reasoning=f"触发熔断：单日大跌 {metrics.daily_change:.1f}%，恐慌时刻往往是买入机会，建议保持定投",
-                zone="机会区",
-                warnings=[f"极端行情：单日大跌 {metrics.daily_change:.1f}%，已触发买入机会"]
+                confidence=0.35,
+                reasoning=f"触发熔断：单日大跌 {metrics.daily_change:.1f}%，定投纪律建议保持正常节奏，切勿恐慌停手",
+                zone="熔断",
+                warnings=[f"⚠️ 极端行情：单日跌 {metrics.daily_change:.1f}%，可能是机会也可能是风险事件开端，请保持冷静"],
+                buy_multiplier=1.0
             )
         if metrics.daily_change > thresholds.circuit_breaker_rise:
             return StrategyResult(
@@ -95,7 +101,8 @@ def evaluate_etf_strategy(
                 confidence=0.3,
                 reasoning=f"触发熔断：单日大涨 {metrics.daily_change:.1f}%，建议冷静观察，次日再决策",
                 zone="熔断",
-                warnings=["极端行情熔断：涨幅过大，暂停决策"]
+                warnings=["极端行情熔断：涨幅过大，暂停决策"],
+                buy_multiplier=0.0
             )
     
     # === 多周期分位共识（使用资产特定阈值）===
@@ -131,17 +138,20 @@ def evaluate_etf_strategy(
     decision: Decision
     confidence: float
     reasoning: str
+    buy_multiplier: float = 1.0
     
     # 黄金坑：双倍补仓（需多周期确认）
     if percentile < zones[0]:  # 动态黄金坑阈值
         if consensus in ["强低估", "弱低估"]:
             decision = Decision.DOUBLE_BUY
             confidence = 0.9 if consensus == "强低估" else 0.75
+            buy_multiplier = 2.0 if consensus == "强低估" else 1.5
             reasoning = f"250日分位 {percentile:.1f}%（<{zones[0]:.0f}%），多周期共识「{consensus}」，珍惜黄金坑加仓机会"
         else:
             # 短期分位与长期不一致，谨慎处理
             decision = Decision.NORMAL_BUY
             confidence = 0.6
+            buy_multiplier = 1.2
             reasoning = f"250日分位 {percentile:.1f}% 处于黄金坑，但多周期「{consensus}」，建议正常定投观察"
             warnings.append("长期分位偏高，短期低估可能是假象")
     
@@ -150,9 +160,11 @@ def evaluate_etf_strategy(
         decision = Decision.NORMAL_BUY
         if consensus in ["强低估", "弱低估"]:
             confidence = 0.8
+            buy_multiplier = 1.2
             reasoning = f"250日分位 {percentile:.1f}%，多周期共识「{consensus}」，适合正常定投"
         else:
             confidence = 0.65
+            buy_multiplier = 1.0
             reasoning = f"250日分位 {percentile:.1f}%，处于{zone}，可正常定投"
     
     # 合理区：观望或正常定投（依据均线位置和动态阈值）
@@ -161,25 +173,47 @@ def evaluate_etf_strategy(
             # 显著低于均线
             decision = Decision.NORMAL_BUY
             confidence = 0.65
+            buy_multiplier = 1.0
             reasoning = f"250日分位 {percentile:.1f}%，低于均线 {abs(metrics.ma_deviation):.1f}%（阈值 {abs(dynamic_ma_threshold):.1f}%），可正常定投"
         elif metrics.ma_deviation < 0:
             decision = Decision.NORMAL_BUY
             confidence = 0.55
+            buy_multiplier = 0.8
             reasoning = f"250日分位 {percentile:.1f}%，略低于均线，可正常定投"
         else:
-            decision = Decision.HOLD
-            confidence = 0.5
-            reasoning = f"250日分位 {percentile:.1f}%，处于{zone}且高于均线，可观望等待机会"
+            if asset_class == AssetClass.COMMODITY_CYCLE.value:
+                # M6: 周期资产合理区高于均线仍可少量定投，分位波动大
+                decision = Decision.NORMAL_BUY
+                confidence = 0.45
+                buy_multiplier = 0.5
+                reasoning = f"250日分位 {percentile:.1f}%，高于均线但周期资产波动大，可少量定投"
+            else:
+                decision = Decision.HOLD
+                confidence = 0.5
+                buy_multiplier = 0.0
+                reasoning = f"250日分位 {percentile:.1f}%，处于{zone}且高于均线，可观望等待机会"
     
-    # 偏高区：观望
+    # 偏高区：观望（周期资产少量定投）
     elif percentile < zones[3]:  # 动态过热阈值
-        decision = Decision.HOLD
-        if consensus in ["强高估", "弱高估"]:
-            confidence = 0.85
-            reasoning = f"250日分位 {percentile:.1f}%，多周期共识「{consensus}」，严禁追高"
+        if asset_class == AssetClass.COMMODITY_CYCLE.value:
+            # M6: 周期资产偏高区仍可少量定投，因为分位波动大
+            decision = Decision.NORMAL_BUY
+            buy_multiplier = 0.3
+            if consensus in ["强高估", "弱高估"]:
+                confidence = 0.4
+                reasoning = f"250日分位 {percentile:.1f}%，多周期「{consensus}」，周期资产少量定投（0.3x）"
+            else:
+                confidence = 0.45
+                reasoning = f"250日分位 {percentile:.1f}%，周期资产偏高但分位波动大，少量定投（0.3x）"
         else:
-            confidence = 0.7
-            reasoning = f"250日分位 {percentile:.1f}%，处于{zone}，建议观望不追高"
+            decision = Decision.HOLD
+            buy_multiplier = 0.0
+            if consensus in ["强高估", "弱高估"]:
+                confidence = 0.85
+                reasoning = f"250日分位 {percentile:.1f}%，多周期共识「{consensus}」，严禁追高"
+            else:
+                confidence = 0.7
+                reasoning = f"250日分位 {percentile:.1f}%，处于{zone}，建议观望不追高"
     
     # 高估区：暂停定投
     else:
@@ -189,11 +223,13 @@ def evaluate_etf_strategy(
             if market_drop is not None and market_drop < -2.0:
                 decision = Decision.NORMAL_BUY
                 confidence = 0.65
-                reasoning = f"250日分位 {percentile:.1f}%，黄金高估但大盘跌 {abs(market_drop):.1f}%，对冲配置价值显现，建议正常定投"
+                buy_multiplier = 0.5
+                reasoning = f"250日分位 {percentile:.1f}%，黄金高估但大盘跌 {abs(market_drop):.1f}%，对冲配置价值显现，建议少量定投"
                 warnings.append("大盘下跌时黄金具备对冲价值")
             else:
                 decision = Decision.HOLD
                 confidence = 0.6
+                buy_multiplier = 0.0
                 reasoning = f"250日分位 {percentile:.1f}%，黄金高估但具避险价值，建议观望而非暂停"
         else:
             # 非黄金资产高估处理
@@ -202,32 +238,55 @@ def evaluate_etf_strategy(
                 if consensus in ["强高估", "弱高估"] and percentile > 95:
                     decision = Decision.STOP_BUY
                     confidence = 0.85
+                    buy_multiplier = 0.0
                     reasoning = f"250日分位 {percentile:.1f}%（>95%），多周期共识「{consensus}」，美股极度过热，暂停定投"
                 else:
                     decision = Decision.HOLD
                     confidence = 0.65
+                    buy_multiplier = 0.0
                     reasoning = f"250日分位 {percentile:.1f}%，美股长牛趋势中高估常态化，建议观望而非暂停"
                     if consensus == "分歧":
                         warnings.append("多周期存在分歧，高估可能只是阶段性的")
             elif consensus in ["强高估", "弱高估"]:
                 decision = Decision.STOP_BUY
                 confidence = 0.95
+                buy_multiplier = 0.0
                 reasoning = f"250日分位 {percentile:.1f}%，多周期共识「{consensus}」，坚决暂停定投积攒弹药"
             else:
                 decision = Decision.STOP_BUY
                 confidence = 0.8
+                buy_multiplier = 0.0
                 reasoning = f"250日分位 {percentile:.1f}%，处于{zone}，建议暂停定投积攒弹药"
                 if consensus == "分歧":
                     warnings.append("多周期存在分歧，可小幅减少暂停力度")
     
-    logger.info(f"ETF策略决策: {decision.value} (资产: {asset_class}, 分位: {percentile:.1f}%, 共识: {consensus}, 区间: {zone})")
+    # === NQ 期货修正（QDII 专用）===
+    if asset_class == AssetClass.US_EQUITY_INDEX.value and nq_change is not None:
+        if nq_change < -2.0:
+            # NQ 期货大跌，今日可能是补仓窗口
+            if decision == Decision.HOLD:
+                decision = Decision.NORMAL_BUY
+                buy_multiplier = 0.8
+                reasoning += f"，NQ期货跌 {abs(nq_change):.1f}%，今日可能是定投窗口"
+            elif decision in (Decision.NORMAL_BUY, Decision.DOUBLE_BUY):
+                buy_multiplier = min(2.0, buy_multiplier + 0.3)
+                reasoning += f"，NQ期货跌 {abs(nq_change):.1f}%，可适度加大投入"
+            warnings.append(f"NQ期货盘中 {nq_change:+.1f}%，美股实际走势待今夜确认")
+        elif nq_change > 2.0:
+            # NQ 期货大涨，昨日低估判断可能已修复
+            if decision in (Decision.DOUBLE_BUY, Decision.NORMAL_BUY):
+                buy_multiplier = max(0.5, buy_multiplier - 0.3)
+                warnings.append(f"NQ期货盘中涨 {nq_change:+.1f}%，昨日低估可能已修复，酌情参考")
+    
+    logger.info(f"ETF策略决策: {decision.value} (资产: {asset_class}, 分位: {percentile:.1f}%, 共识: {consensus}, 区间: {zone}, 倍数: {buy_multiplier:.1f}x)")
     
     return StrategyResult(
         decision=decision,
         confidence=confidence,
         reasoning=reasoning,
         zone=zone,
-        warnings=warnings
+        warnings=warnings,
+        buy_multiplier=buy_multiplier
     )
 
 
