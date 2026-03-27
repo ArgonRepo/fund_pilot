@@ -20,14 +20,14 @@ class AlertFundData:
     zone: str                    # 估值区间
     drawdown: float              # 60日回撤
     holdings_txt: Optional[str] = None # 持仓概览 (前3大重仓+涨跌)
-    # 新增字段 v2.0
     percentile_60: Optional[float] = None   # 60日分位
-    percentile_1250: Optional[float] = None  # 500日分位
+    percentile_1250: Optional[float] = None  # 1250日分位
     volatility_60: Optional[float] = None   # 60日年化波动率
+    percentile_consensus: Optional[str] = None  # 多周期共识
     # QDII NQ=F 期货参考
-    nq_change_pct: Optional[float] = None     # NQ=F 期货涨跌幅
-    nq_data_source: Optional[str] = None      # 数据来源
-    nq_market_status: Optional[str] = None    # 期货市场状态
+    nq_change_pct: Optional[float] = None
+    nq_data_source: Optional[str] = None
+    nq_market_status: Optional[str] = None
 
 
 @dataclass
@@ -62,8 +62,21 @@ def _get_zone_style(zone: str) -> tuple[str, str]:
         "高估区": ("#FFEBEE", "#C62828"),
         "机会区": ("#E8F5E9", "#2E7D32"),
         "正常区": ("#F5F5F5", "#616161"),
+        "熔断": ("#F3E5F5", "#7B1FA2"),
     }
     return styles.get(zone, ("#F5F5F5", "#616161"))
+
+
+def _get_consensus_style(consensus: str) -> tuple[str, str]:
+    """获取共识标签样式 (背景色, 文字色)"""
+    styles = {
+        "强低估": ("#E8F5E9", "#1B5E20"),
+        "弱低估": ("#F1F8E9", "#33691E"),
+        "分歧": ("#F5F5F5", "#616161"),
+        "弱高估": ("#FFF3E0", "#E65100"),
+        "强高估": ("#FFEBEE", "#B71C1C"),
+    }
+    return styles.get(consensus or "", ("#F5F5F5", "#616161"))
 
 
 def _get_fund_type_short(fund_type: str) -> str:
@@ -284,14 +297,14 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
         </div>
         
         <div class="data-section">
-            <div class="section-title">基金实时估值</div>
+            <div class="section-title">基金估值概况</div>
             <table class="data-table">
                 <tr>
-                    <th>代码</th>
                     <th>基金</th>
                     <th class="text-right">实时估值</th>
-                    <th class="text-center">250日分位</th>
-                    <th class="text-center">估值区间</th>
+                    <th class="text-center">分位 (60/250/1250)</th>
+                    <th class="text-center">共识</th>
+                    <th class="text-center">区间</th>
                 </tr>
                 {fund_rows}
             </table>
@@ -301,10 +314,10 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
             <div class="section-title">量化指标</div>
             <table class="data-table">
                 <tr>
-                    <th>代码</th>
                     <th>基金</th>
                     <th class="text-right">60日均线偏离</th>
                     <th class="text-right">60日最大回撤</th>
+                    <th class="text-right">60日波动率</th>
                 </tr>
                 {metrics_rows}
             </table>
@@ -314,7 +327,6 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
             <div class="section-title">持仓动态 (Top 3)</div>
             <table class="data-table">
                 <tr>
-                    <th>代码</th>
                     <th>基金</th>
                     <th>重仓股表现</th>
                 </tr>
@@ -326,20 +338,24 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
             <div class="glossary-title">术语说明</div>
             <table class="glossary-table">
                 <tr>
-                    <td class="term-cell">250日分位</td>
-                    <td>当前价格在过去一年内的位置。0%表示一年最低，100%表示一年最高。类似于"历史打折力度"。</td>
+                    <td class="term-cell">多周期分位</td>
+                    <td>分别计算 60/250/1250 日内当前价格的排名。0%=历史最低, 100%=历史最高。三个周期交叉验证可避免单一周期锚定偏误。</td>
                 </tr>
                 <tr>
-                    <td class="term-cell">60日均线偏离</td>
-                    <td>当前价格相对于近 60 天平均价的偏离。正值 = 高于均线（走强），负值 = 低于均线（走弱）。</td>
+                    <td class="term-cell">多周期共识</td>
+                    <td>综合短/中/长期分位的加权判断（长期权重最高）。强低估=多周期一致看低，分歧=信号不一致。</td>
                 </tr>
                 <tr>
-                    <td class="term-cell">60日最大回撤</td>
-                    <td>近 60 个交易日内，从最高点回落的最大幅度，反映近期最大可能亏损。</td>
+                    <td class="term-cell">均线偏离</td>
+                    <td>当前价格相对于近 60 天平均价的偏离。正值=高于均线（走强），负值=低于均线（走弱）。</td>
+                </tr>
+                <tr>
+                    <td class="term-cell">60日波动率</td>
+                    <td>近 60 个交易日的年化波动率。数值越大，价格越动，定投的分散效果越明显。</td>
                 </tr>
                 <tr>
                     <td class="term-cell">估值区间</td>
-                    <td>基于分位值划分：黄金坑（0-20%）、低估区（20-40%）、合理区（40-60%）、偏高区（60-80%）、高估区（80-100%）。</td>
+                    <td>根据资产类型动态划分：黄金坑→低估→合理→偏高→高估。不同资产的分界线不同。</td>
                 </tr>
             </table>
         </div>
@@ -354,24 +370,23 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
 
 
 FUND_ROW_TEMPLATE = """<tr>
-    <td style="color: #888; font-size: 12px;">{fund_code}</td>
     <td class="fund-name-cell">{fund_name}<span class="fund-type-badge">{fund_type}</span></td>
     <td class="text-right" style="color: {change_color}; font-weight: 500;">{estimate_change}</td>
-    <td class="text-center" style="font-weight: 500;">{percentile}</td>
+    <td class="text-center" style="font-size: 12px;"><span style="color:#64748b">{p60:.0f}</span> / <strong>{p250:.0f}</strong> / <span style="color:#64748b">{p1250:.0f}</span></td>
+    <td class="text-center"><span class="zone-badge" style="background: {consensus_bg}; color: {consensus_color};">{consensus}</span></td>
     <td class="text-center"><span class="zone-badge" style="background: {zone_bg}; color: {zone_color};">{zone}</span></td>
 </tr>"""
 
 
 METRICS_ROW_TEMPLATE = """<tr>
-    <td style="color: #888; font-size: 12px;">{fund_code}</td>
     <td class="fund-name-cell">{fund_name_short}</td>
     <td class="text-right" style="color: {deviation_color};">{ma_deviation}</td>
     <td class="text-right">{drawdown}</td>
+    <td class="text-right">{volatility}</td>
 </tr>"""
 
 
 HOLDINGS_ROW_TEMPLATE = """<tr>
-    <td style="color: #888; font-size: 12px;">{fund_code}</td>
     <td class="fund-name-cell">{fund_name_short}</td>
     <td style="font-size: 12px; color: #666; line-height: 1.4;">{holdings_txt}</td>
 </tr>"""
@@ -435,12 +450,16 @@ def generate_alert_email_html(
             display_label = f"实时 {_format_change(display_change)}"
         
         fund_rows.append(FUND_ROW_TEMPLATE.format(
-            fund_code=fund.fund_code,
             fund_name=name,
             fund_type=_get_fund_type_short(fund.fund_type),
             estimate_change=display_label,
             change_color=_get_change_color(display_change),
-            percentile=f"{fund.percentile_250:.0f}%",
+            p60=fund.percentile_60 or 0,
+            p250=fund.percentile_250,
+            p1250=fund.percentile_1250 or 0,
+            consensus=fund.percentile_consensus or "—",
+            consensus_bg=_get_consensus_style(fund.percentile_consensus or "")[0],
+            consensus_color=_get_consensus_style(fund.percentile_consensus or "")[1],
             zone=fund.zone,
             zone_bg=zone_bg,
             zone_color=zone_color
@@ -456,17 +475,16 @@ def generate_alert_email_html(
             name = name[:7] + "…"
         
         metrics_rows.append(METRICS_ROW_TEMPLATE.format(
-            fund_code=fund.fund_code,
             fund_name_short=name,
             ma_deviation=_format_change(fund.ma_deviation),
             deviation_color=_get_change_color(fund.ma_deviation),
-            drawdown=f"{fund.drawdown:.2f}%"
+            drawdown=f"{fund.drawdown:.2f}%",
+            volatility=f"{fund.volatility_60:.1f}%" if fund.volatility_60 else "—"
         ))
         
         # 仅当有持仓信息时显示
         if fund.holdings_txt:
             holdings_rows.append(HOLDINGS_ROW_TEMPLATE.format(
-                fund_code=fund.fund_code,
                 fund_name_short=name,
                 holdings_txt=fund.holdings_txt
             ))

@@ -13,7 +13,7 @@ from data.fund_history import get_fund_history
 from data.holdings import get_holdings_with_quotes
 from data.market import get_market_context
 from data.us_market import fetch_nq_futures
-from strategy.indicators import calculate_all_metrics, get_percentile_zone
+from strategy.indicators import calculate_all_metrics, get_percentile_zone, get_percentile_consensus
 from notification.email_template import generate_combined_email_html, generate_combined_email_subject
 from notification.sender import send_combined_report, send_error_notification
 from scheduler.calendar import should_run_task
@@ -167,13 +167,32 @@ def run_alert_task():
                 daily_change=valuation.estimate_change
             )
             
-            # 确定估值区间
-            zone = get_percentile_zone(metrics.percentile_250)
+            # 确定估值区间（使用资产感知的动态阈值）
+            from strategy.asset_config import infer_asset_class, get_thresholds
+            _asset_class = fund.asset_class or infer_asset_class(fund.type, fund.name)
+            thresholds = get_thresholds(_asset_class)
+            zones = thresholds.zone_thresholds
+            p = metrics.percentile_250
+            if p < zones[0]:
+                zone = "黄金坑"
+            elif p < zones[1]:
+                zone = "低估区"
+            elif p < zones[2]:
+                zone = "合理区"
+            elif p < zones[3]:
+                zone = "偏高区"
+            else:
+                zone = "高估区"
+            
+            # 计算多周期共识（使用资产特定阈值）
+            consensus = get_percentile_consensus(
+                metrics,
+                low_threshold=thresholds.consensus_low_threshold,
+                high_threshold=thresholds.consensus_high_threshold
+            )
             
             # 获取持仓信息 (用于穿透分析)
             # 黄金ETF / QDII 等不含股票持仓的基金，跳过持仓获取
-            from strategy.asset_config import infer_asset_class
-            _asset_class = fund.asset_class or infer_asset_class(fund.type, fund.name)
             holdings = None
             if _asset_class not in ("GOLD_ETF", "US_EQUITY_INDEX") and fund.type != "QDII":
                 holdings = get_holdings_with_quotes(fund)
@@ -203,6 +222,7 @@ def run_alert_task():
                 percentile_60=metrics.percentile_60,
                 percentile_1250=metrics.percentile_1250,
                 volatility_60=metrics.volatility_60,
+                percentile_consensus=consensus,
                 nq_change_pct=nq_data.change_pct if (fund.type == "QDII" and nq_data) else None,
                 nq_data_source=nq_data.data_source if (fund.type == "QDII" and nq_data) else None,
                 nq_market_status=nq_data.market_status if (fund.type == "QDII" and nq_data) else None
