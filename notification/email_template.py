@@ -102,7 +102,10 @@ def _get_zone_label(zone: str) -> str:
         "偏高区": "偏高",
         "高估区": "高估",
         "极端低估": "极低",
-        "极端高估": "极高"
+        "极端高估": "极高",
+        "机会区": "机会",
+        "正常区": "正常",
+        "熔断": "熔断",
     }
     return labels.get(zone, zone or "—")
 
@@ -112,9 +115,12 @@ def _get_zone_color(zone: str) -> str:
         "低估区": "#27ae60",
         "极端低估": "#1e8449",
         "合理区": "#2c3e50",
+        "正常区": "#2c3e50",
         "偏高区": "#e67e22",
         "高估区": "#c0392b",
-        "极端高估": "#922b21"
+        "极端高估": "#922b21",
+        "机会区": "#2980b9",
+        "熔断": "#8e44ad",
     }
     return colors.get(zone, "#7f8c8d")
 
@@ -449,6 +455,7 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
                         <th>基金</th>
                         <th>实时估值</th>
                         <th>估值水平</th>
+                        <th>定投倍数</th>
                         <th style="text-align: right;">操作建议</th>
                     </tr>
                 </thead>
@@ -469,24 +476,24 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
             <div class="glossary-title">术语说明</div>
             <div class="glossary-grid">
                 <div class="glossary-item">
-                    <span class="glossary-term">250日估值分位</span>
-                    <span class="glossary-def">当前价格在历史区间中的位置。0%=历史最低，100%=历史最高。类似考试成绩排名，85%意味着超过了85%的历史价格。</span>
+                    <span class="glossary-term">多周期分位</span>
+                    <span class="glossary-def">分别计算 60/250/1250 日区间内当前价格的排名。0%=历史最低，100%=历史最高。三个周期交叉验证可避免单一周期锚定偏误。</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">多周期共识</span>
+                    <span class="glossary-def">综合短/中/长期分位的加权判断（长期权重最高）。强低估=多周期一致看低，分歧=各周期信号不一致。</span>
                 </div>
                 <div class="glossary-item">
                     <span class="glossary-term">60日均线偏离</span>
                     <span class="glossary-def">当前价格与过去60天平均价格的差距。偏离过大通常预示价格可能回归均值。</span>
                 </div>
                 <div class="glossary-item">
-                    <span class="glossary-term">量化策略</span>
-                    <span class="glossary-def">基于数学模型和历史数据的客观规则判断，根据多周期分位值、均线偏离等指标给出标准化建议。</span>
+                    <span class="glossary-term">定投倍数</span>
+                    <span class="glossary-def">建议的定投金额倍数。1.0x=正常定投额，2.0x=双倍，0.5x=减半，0=暂停。策略根据分位、共识和资产特性综合计算。</span>
                 </div>
                 <div class="glossary-item">
                     <span class="glossary-term">置信度</span>
-                    <span class="glossary-def">策略对该建议的确定程度。越高代表指标信号越明确。</span>
-                </div>
-                <div class="glossary-item">
-                    <span class="glossary-term">操作建议</span>
-                    <span class="glossary-def">量化策略根据当前市场数据给出的操作建议。</span>
+                    <span class="glossary-def">策略对该建议的确定程度。越高代表指标信号越明确，熔断场景下会显著降低。</span>
                 </div>
             </div>
         </div>
@@ -507,6 +514,7 @@ SUMMARY_ROW_TEMPLATE = """<tr>
     </td>
     <td style="color: {change_color}; font-weight: 500;">{estimate_change}</td>
     <td style="color: {zone_color};">{zone_label}</td>
+    <td style="font-weight: 600; color: #0369a1;">{multiplier_display}</td>
     <td style="text-align: right;">
         <span class="decision-tag" style="background: {decision_bg}; color: {decision_color};">{decision}</span>
     </td>
@@ -525,13 +533,26 @@ FUND_SECTION_TEMPLATE = """<div class="fund-card">
                 <div class="metric-value" style="color: {change_color};">{estimate_change}</div>
             </div>
             <div class="metric-item">
-                <div class="metric-label">250日估值分位</div>
+                <div class="metric-label">60日分位</div>
+                <div class="metric-value">{percentile_60:.0f}%</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">250日分位</div>
                 <div class="metric-value" style="color: {zone_color};">{percentile_250:.0f}%</div>
+            </div>
+            <div class="metric-item">
+                <div class="metric-label">1250日分位</div>
+                <div class="metric-value">{percentile_1250:.0f}%</div>
             </div>
             <div class="metric-item">
                 <div class="metric-label">60日均线偏离</div>
                 <div class="metric-value">{ma_deviation:+.2f}%</div>
             </div>
+        </div>
+        <!-- Consensus -->
+        <div style="background: #f1f5f9; border-radius: 4px; padding: 6px 12px; margin-bottom: 12px; font-size: 13px;">
+            <span style="color: #64748b;">多周期共识:</span>
+            <strong style="color: {consensus_color}; margin-left: 4px;">{consensus_label}</strong>
         </div>
         {nq_reference_html}
         
@@ -591,6 +612,7 @@ def generate_combined_email_html(
             change_color=_get_change_color(display_change),
             zone_label=_get_zone_label(report.zone),
             zone_color=_get_zone_color(report.zone),
+            multiplier_display=_format_multiplier(report.buy_multiplier),
             decision=report.decision,
             decision_color=_get_decision_color(report.decision),
             decision_bg=_get_decision_bg(report.decision)
@@ -654,6 +676,15 @@ def generate_combined_email_html(
             card_change = report.estimate_change
             card_label = f"实时 {_format_change(card_change)}"
         
+        # Consensus display
+        consensus_label = report.percentile_consensus or "—"
+        consensus_colors = {
+            "强低估": "#1e8449", "弱低估": "#27ae60",
+            "分歧": "#7f8c8d",
+            "弱高估": "#e67e22", "强高估": "#c0392b"
+        }
+        consensus_color = consensus_colors.get(consensus_label, "#2c3e50")
+        
         fund_sections.append(FUND_SECTION_TEMPLATE.format(
             fund_name=report.fund_name,
             fund_code=report.fund_code,
@@ -663,9 +694,14 @@ def generate_combined_email_html(
             estimate_change=card_label,
             change_color=_get_change_color(card_change),
             
+            percentile_60=report.percentile_60 or 0,
             percentile_250=report.percentile_250,
+            percentile_1250=report.percentile_1250 or 0,
             zone_color=_get_zone_color(report.zone),
             ma_deviation=report.ma_deviation,
+            
+            consensus_label=consensus_label,
+            consensus_color=consensus_color,
             
             decision=report.decision,
             decision_color=_get_decision_color(report.decision),
