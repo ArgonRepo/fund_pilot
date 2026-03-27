@@ -1,5 +1,5 @@
 """
-FundPilot-AI 配置加载器
+FundPilot 配置加载器
 从 .env 文件加载所有配置
 """
 
@@ -24,15 +24,6 @@ class FundConfig:
 
 
 @dataclass
-class DeepSeekConfig:
-    """DeepSeek API 配置"""
-    api_key: str
-    model: str = "deepseek-chat"
-    base_url: str = "https://api.deepseek.com"
-    max_tokens: int = 8000
-
-
-@dataclass
 class EmailConfig:
     """邮件配置"""
     smtp_server: str
@@ -53,7 +44,6 @@ class SchedulerConfig:
 @dataclass
 class AppConfig:
     """应用总配置"""
-    deepseek: DeepSeekConfig
     email: EmailConfig
     scheduler: SchedulerConfig
     funds: list[FundConfig] = field(default_factory=list)
@@ -69,14 +59,6 @@ def _parse_receivers(receivers_str: str) -> list[str]:
 
 def load_config() -> AppConfig:
     """加载配置"""
-    # DeepSeek 配置
-    deepseek = DeepSeekConfig(
-        api_key=os.getenv("DEEPSEEK_API_KEY", ""),
-        model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
-        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-        max_tokens=int(os.getenv("DEEPSEEK_MAX_TOKENS", "4000"))
-    )
-    
     # 邮件配置
     email = EmailConfig(
         smtp_server=os.getenv("SMTP_SERVER", ""),
@@ -114,12 +96,10 @@ def load_config() -> AppConfig:
             raise ValueError(f"加载基金配置文件失败 (data/funds.json): {e}")
     else:
         # 如果文件不存在，返回空列表或抛出错误
-        # 这里选择返回空列表，但打印警告
         print(f"Warning: Fund config file not found at {funds_json_path}")
         funds = []
     
     return AppConfig(
-        deepseek=deepseek,
         email=email,
         scheduler=scheduler,
         funds=funds

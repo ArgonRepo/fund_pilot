@@ -1,5 +1,5 @@
 """
-FundPilot-AI 单只基金决策流水线
+FundPilot 单只基金决策流水线
 封装从数据采集到报告生成的完整处理流程
 """
 
@@ -16,13 +16,10 @@ from data.fund_history import get_fund_history, get_recent_nav
 from data.holdings import get_holdings_with_quotes
 from data.market import get_market_context
 from data.us_market import fetch_nq_futures
-from strategy.indicators import calculate_all_metrics, get_dynamic_ma_threshold, get_dynamic_drop_threshold
+from strategy.indicators import calculate_all_metrics
 from strategy.etf_strategy import evaluate_etf_strategy, get_buy_multiplier
 from strategy.bond_strategy import evaluate_bond_strategy
-from strategy.asset_config import infer_asset_class, get_thresholds
-from strategy.decision_synthesizer import synthesize_decisions
-from ai.ai_decision import get_ai_decision
-from ai.alert_context import build_context
+from strategy.asset_config import infer_asset_class
 from visualization.chart import generate_trend_chart
 from notification.email_template import FundReport
 
@@ -41,14 +38,12 @@ class FundResult:
 
 def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
     """
-    处理单只基金的决策流程（双轨决策版 v3.0）
+    处理单只基金的决策流程（纯策略版 v4.0）
     
     流程:
     1. 数据采集
-    2. 策略主导决策（资产感知）
-    3. AI主导决策（专业Prompt）
-    4. 决策合成
-    5. 报告生成
+    2. 策略决策（资产感知）
+    3. 报告生成
     
     Args:
         fund: 基金配置
@@ -80,9 +75,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             daily_change=valuation.estimate_change
         )
         
-        
         # 4. 获取持仓信息
-        # 优化: 黄金/QDII 基金因数据源限制暂无持仓明细，跳过获取以避免 Warning
         asset_class = fund.asset_class or infer_asset_class(fund.type, fund.name)
         holdings = None
         
@@ -92,11 +85,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         # 5. 获取市场环境
         market = get_market_context()
         
-        # === 双轨决策架构 ===
-        
-        # 6a. 策略主导决策（资产感知）
-        
-        # 获取大盘跌幅用于黄金对冲判断
+        # 6. 策略决策（资产感知）
         market_drop = None
         if market and market.shanghai_index:
             market_drop = market.shanghai_index.change
@@ -108,7 +97,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         
         logger.info(f"策略决策: {strategy_result.decision.value} (confidence: {strategy_result.confidence:.0%})")
         
-        # 6b. QDII 基金: 获取 NQ=F 期货数据
+        # 7. QDII 基金: 获取 NQ=F 期货数据
         nq_futures = None
         if fund.type == "QDII":
             nq_futures = fetch_nq_futures()
@@ -117,66 +106,8 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             else:
                 logger.warning("NQ=F 期货数据获取失败，仅使用基金历史数据决策")
         
-        # 6c. AI主导决策（专业化Prompt）
-        # 构建动态阈值用于债券Prompt
-        dynamic_thresholds = None
-        thresholds = get_thresholds(asset_class)
-        if fund.type == "Bond":
-            drop_normal, drop_severe = get_dynamic_drop_threshold(metrics.volatility_60)
-            dynamic_thresholds = {
-                "ma_threshold": min(get_dynamic_ma_threshold(metrics.volatility_60), thresholds.ma_base_threshold),
-                "drop_normal": drop_normal,
-                "drop_severe": drop_severe
-            }
-        
-        # A-1: 构建策略参考（供 AI 交叉验证，但不强制约束 AI）
-        strategy_reference = {
-            "decision": strategy_result.decision.value,
-            "confidence": f"{strategy_result.confidence:.0%}",
-            "reasoning": strategy_result.reasoning,
-            "note": "此为量化策略的独立判断，仅供参考。你应独立分析，可以认同也可以反驳。"
-        }
-        
-        # A-2: 构建资产阈值参考（让 AI 理解系统对该资产的波动预期）
-        asset_thresholds_info = {
-            "zone_thresholds": {
-                "golden_pit": f"<{thresholds.zone_thresholds[0]:.0f}%",
-                "undervalued": f"<{thresholds.zone_thresholds[1]:.0f}%",
-                "overvalued": f">{thresholds.zone_thresholds[2]:.0f}%",
-                "overheated": f">{thresholds.zone_thresholds[3]:.0f}%"
-            },
-            "circuit_breaker": {
-                "drop": f"{thresholds.circuit_breaker_drop:.1f}%",
-                "rise": f"{thresholds.circuit_breaker_rise:.1f}%"
-            },
-            "description": thresholds.description,
-            "note": "这些是系统为该资产类型设定的参考阈值，供你理解该类资产的正常波动范围"
-        }
-        
-        ai_result = get_ai_decision(
-            fund_config=fund,
-            valuation=valuation,
-            metrics=metrics,
-            holdings=holdings,
-            market=market,
-            dynamic_thresholds=dynamic_thresholds,
-            nq_futures=nq_futures,
-            strategy_reference=strategy_reference,
-            asset_thresholds=asset_thresholds_info
-        )
-        
-        if ai_result:
-            logger.info(f"AI决策: {ai_result.decision} (信心度: {ai_result.confidence})")
-        else:
-            logger.warning("AI决策失败，将仅使用策略决策")
-        
-        # 6d. 决策合成
-        synthesized = synthesize_decisions(strategy_result, ai_result, asset_class)
-        
-        logger.info(f"最终决策: {synthesized.final_decision} ({synthesized.synthesis_method})")
-        
-        # 7. 生成图表
-        recent_90 = get_recent_nav(history, 90)  # 约 4 个月交易日 (90个交易日)
+        # 8. 生成图表
+        recent_90 = get_recent_nav(history, 90)
         recent_90_asc = list(reversed(recent_90))
         
         chart_image = generate_trend_chart(
@@ -187,7 +118,9 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             estimate_change=valuation.estimate_change
         )
         
-        # 8. 计算补仓倍数
+        # 9. 计算补仓倍数
+        final_decision = strategy_result.decision.value
+        
         raw_multiplier = get_buy_multiplier(
             percentile=metrics.percentile_250,
             consensus=metrics.percentile_consensus,
@@ -196,20 +129,20 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         
         # 决策一致性修正
         final_multiplier = raw_multiplier
-        if synthesized.final_decision == "正常定投" and final_multiplier < 1.0:
+        if final_decision == "正常定投" and final_multiplier < 1.0:
             final_multiplier = 1.0
-        elif synthesized.final_decision == "双倍补仓" and final_multiplier < 2.0:
+        elif final_decision == "双倍补仓" and final_multiplier < 2.0:
             final_multiplier = 2.0
-        elif synthesized.final_decision in ["暂停定投", "观望"]:
+        elif final_decision in ["暂停定投", "观望"]:
             final_multiplier = 0.0
 
-        # 9. 构建报告数据
+        # 10. 构建报告数据
         report = FundReport(
             fund_name=fund.name,
             fund_code=fund.code,
             fund_type=fund.type,
-            decision=synthesized.final_decision,
-            reasoning=synthesized.final_reasoning,
+            decision=final_decision,
+            reasoning=strategy_result.reasoning,
             estimate_change=valuation.estimate_change,
             percentile_250=metrics.percentile_250,
             ma_deviation=metrics.ma_deviation,
@@ -218,29 +151,23 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             top_gainers=holdings.top_gainers if holdings else None,
             top_losers=holdings.top_losers if holdings else None,
             chart_cid=f"chart_{fund.code}",
-            warnings=synthesized.warnings,
+            warnings=list(strategy_result.warnings),
             percentile_60=metrics.percentile_60,
             percentile_1250=metrics.percentile_1250,
             volatility_60=metrics.volatility_60,
             percentile_consensus=metrics.percentile_consensus,
             trend_direction=metrics.trend_direction,
-            strategy_decision=synthesized.strategy_decision,
-            strategy_confidence=synthesized.strategy_confidence,
-            strategy_reasoning=synthesized.strategy_reasoning,
-            ai_decision=synthesized.ai_decision,
-            ai_confidence=synthesized.ai_confidence,
-            ai_reasoning=synthesized.ai_reasoning,
-            final_confidence=synthesized.final_confidence,
-            synthesis_method=synthesized.synthesis_method,
+            strategy_decision=final_decision,
+            strategy_confidence=strategy_result.confidence,
+            strategy_reasoning=strategy_result.reasoning,
             asset_class=asset_class,
             buy_multiplier=final_multiplier,
             nq_change_pct=nq_futures.change_pct if nq_futures else None,
             nq_data_source=nq_futures.data_source if nq_futures else None
         )
         
-        # 10. 记录决策日志
+        # 11. 记录决策日志
         db = get_database()
-        context_json = build_context(fund, valuation, metrics, holdings, market, nq_futures=nq_futures)
         db.save_decision_log(
             fund_code=fund.code,
             fund_name=fund.name,
@@ -251,13 +178,12 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             percentile_250=metrics.percentile_250,
             percentile_1250=metrics.percentile_1250,
             ma_60=metrics.ma_60,
-            ai_decision=synthesized.final_decision,
+            decision=final_decision,
             decision_nav=valuation.estimate_nav,
-            ai_reasoning=synthesized.final_reasoning,
-            raw_context=context_json
+            reasoning=strategy_result.reasoning
         )
         
-        logger.info(f"基金 {fund.name} 处理完成: {synthesized.final_decision}")
+        logger.info(f"基金 {fund.name} 处理完成: {final_decision}")
         return FundResult(fund=fund, success=True, report=report, chart_image=chart_image)
         
     except Exception as e:

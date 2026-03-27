@@ -42,9 +42,6 @@ class StrategyThresholds:
     consensus_low_threshold: float = 40.0
     consensus_high_threshold: float = 60.0
     
-    # AI决策权重（与策略决策合成时的权重）
-    ai_weight: float = 0.5
-    
     # 描述
     description: str = ""
 
@@ -59,7 +56,6 @@ ASSET_THRESHOLDS: dict[AssetClass, StrategyThresholds] = {
         circuit_breaker_rise=8.0,
         consensus_low_threshold=35.0,
         consensus_high_threshold=65.0,
-        ai_weight=0.6,  # 黄金需要更多定性判断，AI权重高
         description="黄金避险资产：与股市负相关，高估不一定暂停"
     ),
     
@@ -70,7 +66,6 @@ ASSET_THRESHOLDS: dict[AssetClass, StrategyThresholds] = {
         circuit_breaker_rise=10.0,
         consensus_low_threshold=30.0,
         consensus_high_threshold=70.0,
-        ai_weight=0.5,  # 平衡
         description="周期商品：强周期高波动，需谨慎建仓"
     ),
     
@@ -81,7 +76,6 @@ ASSET_THRESHOLDS: dict[AssetClass, StrategyThresholds] = {
         circuit_breaker_rise=2.0,
         consensus_low_threshold=40.0,
         consensus_high_threshold=60.0,
-        ai_weight=0.4,  # 债券策略更可靠
         description="二级债基：含股票仓位，波动高于纯债"
     ),
     
@@ -92,7 +86,6 @@ ASSET_THRESHOLDS: dict[AssetClass, StrategyThresholds] = {
         circuit_breaker_rise=1.5,
         consensus_low_threshold=45.0,
         consensus_high_threshold=55.0,
-        ai_weight=0.3,  # 纯债规则更可靠
         description="纯债基金：低波动利率敏感"
     ),
     
@@ -103,7 +96,6 @@ ASSET_THRESHOLDS: dict[AssetClass, StrategyThresholds] = {
         circuit_breaker_rise=5.0,
         consensus_low_threshold=25.0,
         consensus_high_threshold=75.0,
-        ai_weight=0.55,  # 美股受宏观政策影响大，AI权重稍高
         description="美股指数QDII：跟踪纳指等，长期上涨趋势，高波动"
     ),
     
@@ -112,7 +104,6 @@ ASSET_THRESHOLDS: dict[AssetClass, StrategyThresholds] = {
         ma_base_threshold=-3.0,
         circuit_breaker_drop=-7.0,
         circuit_breaker_rise=7.0,
-        ai_weight=0.5,
         description="默认ETF策略"
     ),
     
@@ -121,7 +112,6 @@ ASSET_THRESHOLDS: dict[AssetClass, StrategyThresholds] = {
         ma_base_threshold=-1.5,
         circuit_breaker_drop=-3.0,
         circuit_breaker_rise=3.0,
-        ai_weight=0.4,
         description="默认债券策略"
     ),
 }

@@ -53,9 +53,8 @@ CREATE TABLE IF NOT EXISTS decision_log (
     percentile_250 REAL,
     percentile_1250 REAL,                    -- 5年分位
     ma_60 REAL,
-    ai_decision TEXT NOT NULL,               -- 双倍补仓/正常定投/暂停定投/观望
-    ai_reasoning TEXT,
-    raw_context TEXT,
+    decision TEXT NOT NULL,                  -- 双倍补仓/正常定投/暂停定投/观望
+    reasoning TEXT,
     decision_nav REAL,                       -- 决策时净值（估值）
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -175,26 +174,25 @@ class Database:
         percentile_250: Optional[float],
         percentile_1250: Optional[float],
         ma_60: Optional[float],
-        ai_decision: str,
+        decision: str,
         decision_nav: Optional[float] = None,
-        ai_reasoning: Optional[str] = None,
-        raw_context: Optional[str] = None
+        reasoning: Optional[str] = None
     ):
-        """保存决策日志（v2.0 含回测字段）"""
+        """保存决策日志"""
         with self.get_connection() as conn:
             conn.execute(
                 """
                 INSERT INTO decision_log 
                 (fund_code, fund_name, fund_type, asset_class, decision_time, 
-                 estimate_change, percentile_250, percentile_1250, ma_60, ai_decision, decision_nav,
-                 ai_reasoning, raw_context)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 estimate_change, percentile_250, percentile_1250, ma_60, decision, decision_nav,
+                 reasoning)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (fund_code, fund_name, fund_type, asset_class, decision_time.isoformat(), 
-                 estimate_change, percentile_250, percentile_1250, ma_60, ai_decision, decision_nav,
-                 ai_reasoning, raw_context)
+                 estimate_change, percentile_250, percentile_1250, ma_60, decision, decision_nav,
+                 reasoning)
             )
-        logger.info(f"保存决策日志: {fund_code} -> {ai_decision}")
+        logger.info(f"保存决策日志: {fund_code} -> {decision}")
     
     # ==================== 持仓缓存操作 ====================
     

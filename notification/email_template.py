@@ -10,12 +10,12 @@ from datetime import datetime
 
 @dataclass
 class FundReport:
-    """单只基金报告数据（双轨决策版 v3.0）"""
+    """单只基金报告数据"""
     fund_name: str
     fund_code: str
     fund_type: str
-    decision: str                                    # 最终决策（保持兼容）
-    reasoning: str                                   # 最终理由（保持兼容）
+    decision: str                                    # 最终决策
+    reasoning: str                                   # 决策理由
     estimate_change: float
     percentile_250: float  # 250 日分位值（主要参考）
     ma_deviation: float
@@ -24,22 +24,15 @@ class FundReport:
     top_gainers: Optional[list[str]] = None
     top_losers: Optional[list[str]] = None
     chart_cid: Optional[str] = None
-    # 新增字段 v2.0
     warnings: Optional[list[str]] = None           # 风险提示列表
     percentile_60: Optional[float] = None          # 60日分位值
     percentile_1250: Optional[float] = None         # 1250日分位值
     volatility_60: Optional[float] = None          # 60日年化波动率
     percentile_consensus: Optional[str] = None     # 多周期共识
     trend_direction: Optional[str] = None          # 趋势方向
-    # 双轨决策字段 v3.0
-    strategy_decision: Optional[str] = None        # 策略主导决策
+    strategy_decision: Optional[str] = None        # 策略决策
     strategy_confidence: Optional[float] = None    # 策略置信度
     strategy_reasoning: Optional[str] = None       # 策略理由
-    ai_decision: Optional[str] = None              # AI主导决策
-    ai_confidence: Optional[str] = None            # AI信心度（高/中/低）
-    ai_reasoning: Optional[str] = None             # AI理由
-    final_confidence: Optional[str] = None         # 最终信心度
-    synthesis_method: Optional[str] = None         # 合成方式
     asset_class: Optional[str] = None              # 资产类型
     buy_multiplier: Optional[float] = None         # 建议补仓倍数 (1.0=正常, 2.0=双倍, 0=暂停)
     # QDII 纳指期货参考
@@ -139,21 +132,6 @@ def _get_asset_label(asset_class: str) -> str:
     return labels.get(asset_class, "基金")
 
 
-def _confidence_to_pct(conf: str) -> str:
-    """Convert AI confidence to display format, handling both old (高/中/低) and new (70%) formats"""
-    if not conf:
-        return "—"
-    # New format: contains percentage
-    if "%" in conf:
-        return conf
-    # Old format: text labels
-    if "高" in conf:
-        return "80%"
-    if "中" in conf:
-        return "60%"
-    if "低" in conf:
-        return "40%"
-    return conf
 
 
 
@@ -500,19 +478,15 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
                 </div>
                 <div class="glossary-item">
                     <span class="glossary-term">量化策略</span>
-                    <span class="glossary-def">基于数学模型和历史数据的客观规则判断，类似体检报告根据指标给出标准化建议。</span>
-                </div>
-                <div class="glossary-item">
-                    <span class="glossary-term">深度分析</span>
-                    <span class="glossary-def">结合市场环境、持仓结构等因素的综合逻辑推理，类似医生问诊综合多种因素给出建议。</span>
+                    <span class="glossary-def">基于数学模型和历史数据的客观规则判断，根据多周期分位值、均线偏离等指标给出标准化建议。</span>
                 </div>
                 <div class="glossary-item">
                     <span class="glossary-term">置信度</span>
-                    <span class="glossary-def">对该建议的确定程度。高=很有把握，中=有一定把握，低=参考性建议。</span>
+                    <span class="glossary-def">策略对该建议的确定程度。越高代表指标信号越明确。</span>
                 </div>
                 <div class="glossary-item">
                     <span class="glossary-term">操作建议</span>
-                    <span class="glossary-def">综合量化策略与深度分析后的最终建议。当两者分歧时，系统会采取保守策略以控制风险。</span>
+                    <span class="glossary-def">量化策略根据当前市场数据给出的操作建议。</span>
                 </div>
             </div>
         </div>
@@ -561,35 +535,17 @@ FUND_SECTION_TEMPLATE = """<div class="fund-card">
         </div>
         {nq_reference_html}
         
-        <!-- Conclusion -->
+        {holdings_html}
+        
+        <!-- Decision -->
         <div class="conclusion-box">
             <div class="conclusion-header">
-                <span class="conclusion-label">综合建议</span>
+                <span class="conclusion-label">策略建议</span>
                 <span class="conclusion-decision" style="color: {decision_color};">{decision}</span>
-                <span style="font-size: 12px; color: #64748b; margin-left: 8px;">建议倍数: <strong style="color: #0369a1;">{buy_multiplier_display}</strong></span>
+                <span style="font-size: 12px; color: #64748b; margin-left: 8px;">置信度: <strong>{strategy_confidence_pct}</strong></span>
+                <span style="font-size: 12px; color: #64748b; margin-left: 8px;">倍数: <strong style="color: #0369a1;">{buy_multiplier_display}</strong></span>
             </div>
             <div class="conclusion-reason">{reasoning}</div>
-        </div>
-        
-        <!-- Decision Process -->
-        <div class="process-section">
-            <div class="process-title">决策过程</div>
-            <div class="process-grid">
-                <div class="process-card">
-                    <div class="process-card-header">
-                        <span class="process-card-title">量化策略 (置信度: {strategy_confidence_pct})</span>
-                        <span class="process-card-tag" style="background: {strategy_tag_bg}; color: {strategy_tag_color};">{strategy_decision}</span>
-                    </div>
-                    <div class="process-card-reason">{strategy_reasoning}</div>
-                </div>
-                <div class="process-card">
-                    <div class="process-card-header">
-                        <span class="process-card-title">深度分析 (置信度: {ai_confidence})</span>
-                        <span class="process-card-tag" style="background: {ai_tag_bg}; color: {ai_tag_color};">{ai_decision}</span>
-                    </div>
-                    <div class="process-card-reason">{ai_reasoning}</div>
-                </div>
-            </div>
         </div>
         
         <!-- Chart -->
@@ -656,14 +612,22 @@ def generate_combined_email_html(
                     for wi, w in enumerate(report.warnings)
                 )
                 warning_html = f'<div class="warning-box">{warning_items}</div>'
-        
-        # Strategy tag colors
-        strategy_tag_bg = _get_decision_bg(report.strategy_decision or report.decision)
-        strategy_tag_color = _get_decision_color(report.strategy_decision or report.decision)
-        
-        # AI tag colors
-        ai_tag_bg = _get_decision_bg(report.ai_decision or report.decision)
-        ai_tag_color = _get_decision_color(report.ai_decision or report.decision)
+                
+        # Holdings rendering
+        holdings_html = ""
+        if report.top_gainers or report.top_losers:
+            h_parts = []
+            if report.top_gainers:
+                h_parts.extend([f'<span style="color:#D32F2F">{g}</span>' for g in report.top_gainers])
+            if report.top_losers:
+                h_parts.extend([f'<span style="color:#388E3C">{l}</span>' for l in report.top_losers])
+            if h_parts:
+                holdings_str = "&nbsp; &middot; &nbsp;".join(h_parts)
+                holdings_html = f'''
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 10px 14px; margin: 12px 0; border-radius: 6px;">
+            <div style="font-size: 12px; color: #64748b; margin-bottom: 4px; font-weight: 500;">重点持仓表现:</div>
+            <div style="font-size: 13px; font-weight: 500;">{holdings_str}</div>
+        </div>'''
         
         # NQ=F 期货参考 HTML (QDII 专用)
         nq_html = ""
@@ -705,19 +669,10 @@ def generate_combined_email_html(
             
             decision=report.decision,
             decision_color=_get_decision_color(report.decision),
-            reasoning=report.reasoning or "系统综合判断",
+            reasoning=report.reasoning or "策略判断",
             
-            strategy_decision=report.strategy_decision or report.decision,
             strategy_confidence_pct=f"{report.strategy_confidence:.0%}" if report.strategy_confidence else "—",
-            strategy_reasoning=report.strategy_reasoning or "规则判断",
-            strategy_tag_bg=strategy_tag_bg,
-            strategy_tag_color=strategy_tag_color,
-            
-            ai_decision=report.ai_decision or report.decision,
-            ai_confidence=_confidence_to_pct(report.ai_confidence),
-            ai_reasoning=report.ai_reasoning or "深度分析中",
-            ai_tag_bg=ai_tag_bg,
-            ai_tag_color=ai_tag_color,
+            holdings_html=holdings_html,
             
             chart_cid=report.chart_cid or f"chart_{i}",
             warning_html=warning_html,
