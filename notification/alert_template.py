@@ -302,7 +302,7 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
                 <tr>
                     <th>基金</th>
                     <th class="text-right">实时估值</th>
-                    <th class="text-center">分位 (60/250/1250)</th>
+                    <th class="text-center">250日分位</th>
                     <th class="text-center">共识</th>
                     <th class="text-center">区间</th>
                 </tr>
@@ -338,8 +338,8 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
             <div class="glossary-title">术语说明</div>
             <table class="glossary-table">
                 <tr>
-                    <td class="term-cell">多周期分位</td>
-                    <td>分别计算 60/250/1250 日内当前价格的排名。0%=历史最低, 100%=历史最高。三个周期交叉验证可避免单一周期锚定偏误。</td>
+                    <td class="term-cell">250日分位</td>
+                    <td>当前价格在过去一年内的位置。0%表示一年最低，100%表示一年最高。类似于"历史打折力度"。</td>
                 </tr>
                 <tr>
                     <td class="term-cell">多周期共识</td>
@@ -372,7 +372,7 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
 FUND_ROW_TEMPLATE = """<tr>
     <td class="fund-name-cell">{fund_name}<span class="fund-type-badge">{fund_type}</span></td>
     <td class="text-right" style="color: {change_color}; font-weight: 500;">{estimate_change}</td>
-    <td class="text-center" style="font-size: 12px;"><span style="color:#64748b">{p60:.0f}</span> / <strong>{p250:.0f}</strong> / <span style="color:#64748b">{p1250:.0f}</span></td>
+    <td class="text-center" style="font-weight: 500;">{p250:.0f}%</td>
     <td class="text-center"><span class="zone-badge" style="background: {consensus_bg}; color: {consensus_color};">{consensus}</span></td>
     <td class="text-center"><span class="zone-badge" style="background: {zone_bg}; color: {zone_color};">{zone}</span></td>
 </tr>"""
@@ -454,9 +454,7 @@ def generate_alert_email_html(
             fund_type=_get_fund_type_short(fund.fund_type),
             estimate_change=display_label,
             change_color=_get_change_color(display_change),
-            p60=fund.percentile_60 or 0,
             p250=fund.percentile_250,
-            p1250=fund.percentile_1250 or 0,
             consensus=fund.percentile_consensus or "—",
             consensus_bg=_get_consensus_style(fund.percentile_consensus or "")[0],
             consensus_color=_get_consensus_style(fund.percentile_consensus or "")[1],
