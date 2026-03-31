@@ -22,6 +22,11 @@ class FundConfig:
     underlying_etf: Optional[str] = None  # ETF 联接基金对应的底层 ETF
     asset_class: Optional[str] = None     # 资产类别: GOLD_ETF / COMMODITY_CYCLE / BOND_ENHANCED / US_EQUITY_INDEX 等
 
+    @property
+    def has_realtime_valuation(self) -> bool:
+        """是否有盘中实时估值（QDII 的实时参考来自期货，不走基金估值API）"""
+        return self.type != "QDII"
+
 
 @dataclass
 class EmailConfig:

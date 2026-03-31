@@ -12,7 +12,7 @@ from data.fund_valuation import fetch_fund_valuation
 from data.fund_history import get_fund_history
 from data.holdings import get_holdings_with_quotes
 from data.market import get_market_context
-from data.us_market import fetch_nq_futures
+from data.us_market import fetch_us_futures_for_fund
 from strategy.indicators import calculate_all_metrics, get_percentile_zone, get_percentile_consensus
 from notification.email_template import generate_combined_email_html, generate_combined_email_subject
 from notification.sender import send_combined_report, send_error_notification
@@ -135,24 +135,21 @@ def run_alert_task():
             hs300_change=market_ctx.hs300_index.change if market_ctx.hs300_index else 0
         )
     
-    # 2. QDII 期货数据 (提前获取，避免重复请求)
-    nq_data = None
-    has_qdii = any(f.type == "QDII" for f in config.funds)
-    if has_qdii:
-        nq_data = fetch_nq_futures()
-        if nq_data:
-            logger.info(f"盘中预警 NQ=F 期货: {nq_data.change_pct:+.2f}% [来源: {nq_data.data_source}]")
+    # 2. QDII 期货数据 (按基金匹配对应期货，缓存避免重复请求)
+    # 缓存在循环中复用，因为 us_market.py 内部已有会话级缓存
     
     # 3. 获取各基金数据
     fund_data_list: list[AlertFundData] = []
     
     for fund in config.funds:
         try:
-            # 获取实时估值
-            valuation = fetch_fund_valuation(fund.code)
-            if not valuation:
-                logger.warning(f"预警: {fund.name} 估值获取失败")
-                continue
+            # 获取实时估值（QDII 不走估值API，实时参考来自期货）
+            valuation = None
+            if fund.type != "QDII":
+                valuation = fetch_fund_valuation(fund.code)
+                if not valuation:
+                    logger.warning(f"预警: {fund.name} 估值获取失败")
+                    continue
             
             # 获取历史数据计算指标（520天用于多周期分位）
             history = get_fund_history(fund.code, days=1250)
@@ -160,11 +157,23 @@ def run_alert_task():
                 logger.warning(f"预警: {fund.name} 历史数据获取失败")
                 continue
             
+            # QDII 估值降级: 无盘中估值时用最新历史净值
+            if valuation:
+                current_price = valuation.estimate_nav
+                daily_change = valuation.estimate_change
+            else:
+                current_price = history[0][1]
+                if len(history) >= 2:
+                    prev_price = history[1][1]
+                    daily_change = (current_price - prev_price) / prev_price * 100
+                else:
+                    daily_change = 0.0
+            
             prices_history = [nav for _, nav in history]
             metrics = calculate_all_metrics(
-                current_price=valuation.estimate_nav,
+                current_price=current_price,
                 prices_history=prices_history,
-                daily_change=valuation.estimate_change
+                daily_change=daily_change
             )
             
             # 确定估值区间（使用资产感知的动态阈值）
@@ -209,11 +218,18 @@ def run_alert_task():
                         parts.append(f"{h.stock_name} <span style='color:{color}'>{h.change:+.1f}%</span>")
                     holdings_txt = "&nbsp; ".join(parts)
             
+            # QDII: 获取对应期货数据
+            us_futures = None
+            if fund.type == "QDII":
+                us_futures = fetch_us_futures_for_fund(fund.name)
+                if us_futures:
+                    logger.info(f"盘中预警 {us_futures.futures_symbol}: {us_futures.change_pct:+.2f}% [来源: {us_futures.data_source}]")
+            
             fund_data = AlertFundData(
                 fund_name=fund.name,
                 fund_code=fund.code,
                 fund_type=fund.type,
-                estimate_change=valuation.estimate_change,
+                estimate_change=daily_change,
                 percentile_250=metrics.percentile_250,
                 ma_deviation=metrics.ma_deviation,
                 zone=zone,
@@ -223,13 +239,14 @@ def run_alert_task():
                 percentile_1250=metrics.percentile_1250,
                 volatility_60=metrics.volatility_60,
                 percentile_consensus=consensus,
-                nq_change_pct=nq_data.change_pct if (fund.type == "QDII" and nq_data) else None,
-                nq_data_source=nq_data.data_source if (fund.type == "QDII" and nq_data) else None,
-                nq_market_status=nq_data.market_status if (fund.type == "QDII" and nq_data) else None
+                nq_change_pct=us_futures.change_pct if (fund.type == "QDII" and us_futures) else None,
+                nq_data_source=us_futures.data_source if (fund.type == "QDII" and us_futures) else None,
+                nq_market_status=us_futures.market_status if (fund.type == "QDII" and us_futures) else None,
+                nq_futures_symbol=us_futures.futures_symbol if (fund.type == "QDII" and us_futures) else None
             )
             fund_data_list.append(fund_data)
             
-            logger.info(f"预警: {fund.name} {valuation.estimate_change:+.2f}% 分位:{metrics.percentile_250:.0f}%")
+            logger.info(f"预警: {fund.name} {daily_change:+.2f}% 分位:{metrics.percentile_250:.0f}%")
             
         except Exception as e:
             logger.warning(f"预警获取 {fund.name} 失败: {e}")

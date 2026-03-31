@@ -16,7 +16,7 @@ class FundReport:
     fund_type: str
     decision: str                                    # 最终决策
     reasoning: str                                   # 决策理由
-    estimate_change: float
+    estimate_change: Optional[float]
     percentile_250: float  # 250 日分位值（主要参考）
     ma_deviation: float
     zone: str
@@ -35,9 +35,12 @@ class FundReport:
     strategy_reasoning: Optional[str] = None       # 策略理由
     asset_class: Optional[str] = None              # 资产类型
     buy_multiplier: Optional[float] = None         # 建议补仓倍数 (1.0=正常, 2.0=双倍, 0=暂停)
-    # QDII 纳指期货参考
-    nq_change_pct: Optional[float] = None          # NQ=F 期货涨跌幅
-    nq_data_source: Optional[str] = None           # 数据来源: "nq_futures" | "fund_nav" | None
+    # QDII 美股期货参考
+    nq_change_pct: Optional[float] = None          # 期货涨跌幅
+    nq_data_source: Optional[str] = None           # 数据来源
+    nq_futures_symbol: Optional[str] = None        # 期货代码 (NQ=F / ES=F)
+    # 其他
+    previous_change: Optional[float] = None        # 昨日估值涨跌幅
 
 
 # ============================================================
@@ -75,7 +78,9 @@ def _format_change(change: float) -> str:
     return f"{change:+.2f}%"
 
 
-def _get_change_color(change: float) -> str:
+def _get_change_color(change: Optional[float]) -> str:
+    if change is None:
+        return "#94a3b8"
     if change > 0:
         return "#c0392b"
     elif change < 0:
@@ -131,7 +136,7 @@ def _get_asset_label(asset_class: str) -> str:
         "COMMODITY_CYCLE": "周期",
         "BOND_ENHANCED": "固收+",
         "BOND_PURE": "纯债",
-        "US_EQUITY_INDEX": "纳指",
+        "US_EQUITY_INDEX": "美股",
         "DEFAULT_ETF": "ETF",
         "DEFAULT_BOND": "债基",
     }
@@ -453,6 +458,7 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
                 <thead>
                     <tr>
                         <th>基金</th>
+                        <th>昨日涨跌</th>
                         <th>实时估值</th>
                         <th>估值水平</th>
                         <th>定投倍数</th>
@@ -512,6 +518,7 @@ SUMMARY_ROW_TEMPLATE = """<tr>
         <div style="font-weight: 500;">{fund_name}</div>
         <div style="font-size: 12px; color: #94a3b8;">{fund_code}</div>
     </td>
+    <td style="color: {prev_color}; font-weight: 500;">{prev_change}</td>
     <td style="color: {change_color}; font-weight: 500;">{estimate_change}</td>
     <td style="color: {zone_color};">{zone_label}</td>
     <td style="font-weight: 600; color: #0369a1;">{multiplier_display}</td>
@@ -593,21 +600,36 @@ def generate_combined_email_html(
     # Summary Rows
     summary_rows = []
     for report in reports:
-        # QDII 三种状态: NQ=F可用 → 显示期货 / NQ=F不可用 → 标记为前日净值 / 非QDII → 实时估值
+        # 昨日涨跌
+        if report.previous_change is not None:
+            prev_change_display = _format_change(report.previous_change)
+            prev_change_color = _get_change_color(report.previous_change)
+        else:
+            prev_change_display = "—"
+            prev_change_color = "#94a3b8"
+
+        # QDII有期货则显示期货值，否则显示失败
         if report.fund_type == "QDII":
             if report.nq_change_pct is not None:
                 display_change = report.nq_change_pct
-                display_label = f"实时 {_format_change(display_change)}"
+                display_label = _format_change(display_change)
             else:
-                display_change = report.estimate_change
-                display_label = f'<span style="color:#94a3b8">前日 {_format_change(display_change)}</span>'
+                display_change = None
+                display_label = "失败"
         else:
-            display_change = report.estimate_change
-            display_label = f"实时 {_format_change(display_change)}"
+            # 实时估值无降级逻辑，无估值则失败
+            if report.estimate_change is not None:
+                display_change = report.estimate_change
+                display_label = _format_change(display_change)
+            else:
+                display_change = None
+                display_label = "失败"
         
         summary_rows.append(SUMMARY_ROW_TEMPLATE.format(
             fund_name=report.fund_name,
             fund_code=report.fund_code,
+            prev_change=prev_change_display,
+            prev_color=prev_change_color,
             estimate_change=display_label,
             change_color=_get_change_color(display_change),
             zone_label=_get_zone_label(report.zone),
@@ -651,30 +673,35 @@ def generate_combined_email_html(
             <div style="font-size: 13px; font-weight: 500;">{holdings_str}</div>
         </div>'''
         
-        # NQ=F 期货参考 HTML (QDII 专用)
-        nq_html = ""
+        # 期货参考 HTML (QDII 专用，动态显示 NQ=F 或 ES=F)
+        futures_html = ""
         if report.nq_change_pct is not None:
-            nq_color = "#c0392b" if report.nq_change_pct > 0 else "#27ae60" if report.nq_change_pct < 0 else "#2c3e50"
-            source_label = "📡 NQ=F 期货" if report.nq_data_source == "nq_futures" else "📡 T-1 净值"
-            fallback_note = ' <span style="color: #e67e22; font-size: 10px;">(降级)</span>' if report.nq_data_source != "nq_futures" else ""
-            nq_html = f'''
+            f_color = "#c0392b" if report.nq_change_pct > 0 else "#27ae60" if report.nq_change_pct < 0 else "#2c3e50"
+            f_symbol = report.nq_futures_symbol or "NQ=F"
+            source_label = f"📡 {f_symbol} 期货"
+            fallback_note = ""
+            futures_html = f'''
         <div style="background: #f0f9ff; border-left: 3px solid #0ea5e9; padding: 8px 12px; margin: 8px 0 12px 0; border-radius: 0 4px 4px 0; font-size: 12px;">
             <span style="color: #64748b;">{source_label}{fallback_note}:</span>
-            <strong style="color: {nq_color}; margin-left: 6px;">{report.nq_change_pct:+.2f}%</strong>
+            <strong style="color: {f_color}; margin-left: 6px;">{report.nq_change_pct:+.2f}%</strong>
             <span style="color: #94a3b8; margin-left: 8px; font-size: 11px;">仅供盘中参考</span>
         </div>'''
         
-        # QDII: 指标卡片也区分三种状态
+        # QDII: 指标卡片
         if report.fund_type == "QDII":
             if report.nq_change_pct is not None:
                 card_change = report.nq_change_pct
-                card_label = f"实时 {_format_change(card_change)}"
+                card_label = _format_change(card_change)
             else:
-                card_change = report.estimate_change
-                card_label = f'前日 {_format_change(card_change)}'
+                card_change = None
+                card_label = "失败"
         else:
-            card_change = report.estimate_change
-            card_label = f"实时 {_format_change(card_change)}"
+            if report.estimate_change is not None:
+                card_change = report.estimate_change
+                card_label = _format_change(card_change)
+            else:
+                card_change = None
+                card_label = "失败"
         
         # Consensus display
         consensus_label = report.percentile_consensus or "—"
@@ -713,7 +740,7 @@ def generate_combined_email_html(
             chart_cid=report.chart_cid or f"chart_{i}",
             warning_html=warning_html,
             buy_multiplier_display=_format_multiplier(report.buy_multiplier),
-            nq_reference_html=nq_html
+            nq_reference_html=futures_html
         ))
     
     return COMBINED_EMAIL_TEMPLATE.format(

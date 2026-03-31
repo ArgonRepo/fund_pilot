@@ -22,7 +22,7 @@ from data.fund_valuation import fetch_fund_valuation
 from data.fund_history import get_fund_history, get_recent_nav
 from data.holdings import get_holdings_with_quotes
 from data.market import get_market_context
-from data.us_market import fetch_nq_futures
+from data.us_market import fetch_us_futures_for_fund
 from strategy.indicators import calculate_all_metrics
 from strategy.etf_strategy import evaluate_etf_strategy
 from strategy.bond_strategy import evaluate_bond_strategy
@@ -64,24 +64,45 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
     logger.info(f"开始处理基金: {fund.name} ({fund.code})")
     
     try:
-        # 1. 获取实时估值
-        valuation = fetch_fund_valuation(fund.code)
-        if not valuation:
-            logger.warning(f"基金 {fund.code} 获取估值失败")
-            return FundResult(fund=fund, success=False, error="获取估值失败")
-        
-        # 2. 获取历史净值（1250天，约5年，用于计算长期分位）
+        # 1. 获取历史净值（1250天，约5年，用于计算长期分位）
         history = get_fund_history(fund.code, days=1250)
         if not history:
             logger.warning(f"基金 {fund.code} 获取历史净值失败")
             return FundResult(fund=fund, success=False, error="获取历史净值失败")
         
-        # 3. 计算量化指标（多周期分位值 + 波动率）
+        # 2. 获取实时估值（QDII 不走估值API，实时参考来自期货）
+        valuation = None
+        if fund.has_realtime_valuation:
+            valuation = fetch_fund_valuation(fund.code)
+            if not valuation:
+                logger.warning(f"基金 {fund.code} 获取估值失败")
+                return FundResult(fund=fund, success=False, error="获取估值失败")
+        
+        # 3. 确定当前价格和日涨跌幅
+        realtime_change = None
+        if valuation:
+            current_price = valuation.estimate_nav
+            daily_change = valuation.estimate_change
+            realtime_change = valuation.estimate_change
+        else:
+            current_price = history[0][1]  # history 降序，[0] 是最新
+            prev_price = history[1][1] if len(history) >= 2 else current_price
+            daily_change = (current_price - prev_price) / prev_price * 100 if prev_price else 0.0
+            logger.info(f"基金 {fund.code} 使用前日净值: {current_price:.4f} ({daily_change:+.2f}%)")
+            
+        # 计算昨日估值涨跌幅 (基于最新收盘净值)
+        previous_change = None
+        if len(history) >= 2:
+            prev_day_nav = history[0][1]
+            day_before_nav = history[1][1]
+            previous_change = (prev_day_nav - day_before_nav) / day_before_nav * 100 if day_before_nav else 0.0
+        
+        # 4. 计算量化指标（多周期分位值 + 波动率）
         prices_history = [nav for _, nav in history]
         metrics = calculate_all_metrics(
-            current_price=valuation.estimate_nav,
+            current_price=current_price,
             prices_history=prices_history,
-            daily_change=valuation.estimate_change
+            daily_change=daily_change
         )
         
         # 4. 获取持仓信息
@@ -94,16 +115,16 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         # 5. 获取市场环境
         market = get_market_context()
         
-        # 6. QDII: 获取 NQ 期货数据（C2: 在决策之前获取，参与决策）
-        nq_futures = None
+        # 6. QDII: 获取对应期货数据（C2: 在决策之前获取，参与决策）
+        us_futures = None
         nq_change_pct = None
         if fund.type == "QDII":
-            nq_futures = fetch_nq_futures()
-            if nq_futures:
-                nq_change_pct = nq_futures.change_pct
-                logger.info(f"NQ=F 期货参考: {nq_futures.change_pct:+.2f}% [来源: {nq_futures.data_source}]")
+            us_futures = fetch_us_futures_for_fund(fund.name)
+            if us_futures:
+                nq_change_pct = us_futures.change_pct
+                logger.info(f"{us_futures.futures_symbol} 期货参考: {us_futures.change_pct:+.2f}% [来源: {us_futures.data_source}]")
             else:
-                logger.warning("NQ=F 期货数据获取失败，仅使用基金历史数据决策")
+                logger.warning("美股期货数据获取失败，仅使用基金历史数据决策")
         
         # 7. 策略决策（C3: 策略直接输出 buy_multiplier，无需二次计算）
         market_drop = None
@@ -121,16 +142,21 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         logger.info(f"策略决策: {strategy_result.decision.value} (confidence: {strategy_result.confidence:.0%}, multiplier: {strategy_result.buy_multiplier:.1f}x)")
         
         # 8. M4: 估值数据时效性检查
-        if valuation.is_stale:
+        if valuation and valuation.is_stale:
             strategy_result.warnings.append("⚠️ 估值数据可能滞后，请参考实际盘面确认")
             strategy_result.confidence = max(0.2, strategy_result.confidence - 0.15)
             logger.warning(f"基金 {fund.code} 估值数据已过期，置信度下调")
+        elif not valuation:
+            strategy_result.warnings.append("⚠️ 无盘中估值（QDII-FOF），决策基于前日净值 + 期货参考")
+            strategy_result.confidence = max(0.2, strategy_result.confidence - 0.1)
+            logger.info(f"基金 {fund.code} 无盘中估值，置信度小幅下调")
         
         # 9. I5: QDII 数据时效性标注
         if fund.type == "QDII":
-            if nq_futures:
+            futures_label = us_futures.futures_symbol if us_futures else "美股"
+            if us_futures:
                 strategy_result.warnings.append(
-                    "QDII 决策基于前日净值 + NQ期货盘中走势，美股今夜开盘后实际走势可能不同"
+                    f"QDII 决策基于前日净值 + {futures_label}期货盘中走势，美股今夜开盘后实际走势可能不同"
                 )
             else:
                 strategy_result.warnings.append(
@@ -149,9 +175,9 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         chart_image = generate_trend_chart(
             fund_name=fund.name,
             history_data=recent_90_asc,
-            estimate_today=valuation.estimate_nav,
+            estimate_today=current_price,
             ma_60=metrics.ma_60,
-            estimate_change=valuation.estimate_change
+            estimate_change=daily_change
         )
         
         # 12. 构建报告数据
@@ -161,7 +187,8 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             fund_type=fund.type,
             decision=final_decision,
             reasoning=strategy_result.reasoning,
-            estimate_change=valuation.estimate_change,
+            estimate_change=realtime_change,
+            previous_change=previous_change,
             percentile_250=metrics.percentile_250,
             ma_deviation=metrics.ma_deviation,
             zone=strategy_result.zone,
@@ -180,8 +207,9 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             strategy_reasoning=strategy_result.reasoning,
             asset_class=asset_class,
             buy_multiplier=final_multiplier,
-            nq_change_pct=nq_futures.change_pct if nq_futures else None,
-            nq_data_source=nq_futures.data_source if nq_futures else None
+            nq_change_pct=us_futures.change_pct if us_futures else None,
+            nq_data_source=us_futures.data_source if us_futures else None,
+            nq_futures_symbol=us_futures.futures_symbol if us_futures else None
         )
         
         # 13. 记录决策日志
@@ -191,12 +219,12 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             fund_type=fund.type,
             asset_class=asset_class,
             decision_time=datetime.now(),
-            estimate_change=valuation.estimate_change,
+            estimate_change=daily_change,
             percentile_250=metrics.percentile_250,
             percentile_1250=metrics.percentile_1250,
             ma_60=metrics.ma_60,
             decision=final_decision,
-            decision_nav=valuation.estimate_nav,
+            decision_nav=current_price,
             reasoning=strategy_result.reasoning
         )
         

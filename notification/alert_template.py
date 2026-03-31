@@ -24,10 +24,11 @@ class AlertFundData:
     percentile_1250: Optional[float] = None  # 1250日分位
     volatility_60: Optional[float] = None   # 60日年化波动率
     percentile_consensus: Optional[str] = None  # 多周期共识
-    # QDII NQ=F 期货参考
+    # QDII 美股期货参考 (NQ=F / ES=F)
     nq_change_pct: Optional[float] = None
     nq_data_source: Optional[str] = None
     nq_market_status: Optional[str] = None
+    nq_futures_symbol: Optional[str] = None
 
 
 @dataclass
