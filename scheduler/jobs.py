@@ -157,10 +157,12 @@ def run_alert_task():
                 logger.warning(f"预警: {fund.name} 历史数据获取失败")
                 continue
             
-            # QDII 估值降级: 无盘中估值时用最新历史净值
+            # 估值降级: 用于指标计算
+            realtime_change = None
             if valuation:
                 current_price = valuation.estimate_nav
                 daily_change = valuation.estimate_change
+                realtime_change = valuation.estimate_change
             else:
                 current_price = history[0][1]
                 if len(history) >= 2:
@@ -229,7 +231,7 @@ def run_alert_task():
                 fund_name=fund.name,
                 fund_code=fund.code,
                 fund_type=fund.type,
-                estimate_change=daily_change,
+                estimate_change=realtime_change,
                 percentile_250=metrics.percentile_250,
                 ma_deviation=metrics.ma_deviation,
                 zone=zone,

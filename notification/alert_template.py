@@ -14,7 +14,7 @@ class AlertFundData:
     fund_name: str
     fund_code: str
     fund_type: str
-    estimate_change: float       # 今日估值涨跌
+    estimate_change: Optional[float]       # 今日实时估值涨跌
     percentile_250: float        # 250日分位
     ma_deviation: float          # 均线偏离
     zone: str                    # 估值区间
@@ -438,17 +438,22 @@ def generate_alert_email_html(
         if len(name) > 10:
             name = name[:9] + "…"
         
-        # QDII 三种状态: NQ=F可用 → 期货 / NQ=F不可用 → 前日净值 / 非QDII → 实时估值
+        # QDII有期货则显示期货值，否则显示失败
         if fund.fund_type == "QDII":
             if fund.nq_change_pct is not None:
                 display_change = fund.nq_change_pct
-                display_label = f"实时 {_format_change(display_change)}"
+                display_label = _format_change(display_change)
             else:
-                display_change = fund.estimate_change
-                display_label = f'<span style="color:#94a3b8">前日 {_format_change(display_change)}</span>'
+                display_change = None
+                display_label = '<span style="color:#94a3b8">失败</span>'
         else:
-            display_change = fund.estimate_change
-            display_label = f"实时 {_format_change(display_change)}"
+            # 实时估值无降级逻辑，获取不到则失败
+            if fund.estimate_change is not None:
+                display_change = fund.estimate_change
+                display_label = _format_change(display_change)
+            else:
+                display_change = None
+                display_label = '<span style="color:#94a3b8">失败</span>'
         
         fund_rows.append(FUND_ROW_TEMPLATE.format(
             fund_name=name,

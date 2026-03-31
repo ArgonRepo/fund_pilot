@@ -96,6 +96,18 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             prev_day_nav = history[0][1]
             day_before_nav = history[1][1]
             previous_change = (prev_day_nav - day_before_nav) / day_before_nav * 100 if day_before_nav else 0.0
+            
+        # 获取过去5个交易日的涨跌幅
+        recent_5_changes = []
+        for i in range(min(5, len(history) - 1)):
+            date_obj = history[i][0]
+            current_nav = history[i][1]
+            prev_nav = history[i+1][1]
+            change = (current_nav - prev_nav) / prev_nav * 100 if prev_nav else 0.0
+            # 使用 hasattr 以防 date_obj 是 datetime 对象
+            date_str = date_obj.strftime("%m-%d") if hasattr(date_obj, 'strftime') else str(date_obj)[5:10]
+            recent_5_changes.append((date_str, change))
+        recent_5_changes.reverse() # 时间正序：最老在前，最新在后
         
         # 4. 计算量化指标（多周期分位值 + 波动率）
         prices_history = [nav for _, nav in history]
@@ -189,6 +201,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             reasoning=strategy_result.reasoning,
             estimate_change=realtime_change,
             previous_change=previous_change,
+            recent_5_changes=recent_5_changes,
             percentile_250=metrics.percentile_250,
             ma_deviation=metrics.ma_deviation,
             zone=strategy_result.zone,

@@ -3,7 +3,7 @@ FundPilot 邮件模板模块 v5.0
 专业、简洁、透明的投资决策报告
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime
 
@@ -41,6 +41,7 @@ class FundReport:
     nq_futures_symbol: Optional[str] = None        # 期货代码 (NQ=F / ES=F)
     # 其他
     previous_change: Optional[float] = None        # 昨日估值涨跌幅
+    recent_5_changes: list[tuple[str, float]] = field(default_factory=list) # 过去5交易日涨跌幅
 
 
 # ============================================================
@@ -458,11 +459,10 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
                 <thead>
                     <tr>
                         <th>基金</th>
-                        <th>昨日涨跌</th>
-                        <th>实时估值</th>
-                        <th>估值水平</th>
-                        <th>定投倍数</th>
-                        <th style="text-align: right;">操作建议</th>
+                        <th style="white-space: nowrap;">实时估值</th>
+                        <th style="white-space: nowrap;">估值水平</th>
+                        <th style="white-space: nowrap;">定投倍数</th>
+                        <th style="text-align: right; white-space: nowrap;">操作建议</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -515,14 +515,13 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
 
 SUMMARY_ROW_TEMPLATE = """<tr>
     <td>
-        <div style="font-weight: 500;">{fund_name}</div>
-        <div style="font-size: 12px; color: #94a3b8;">{fund_code}</div>
+        <div style="font-weight: 500; font-size: 13px;">{fund_name}</div>
+        <div style="font-size: 11px; margin-top: 2px; color: #94a3b8;">{fund_code}</div>
     </td>
-    <td style="color: {prev_color}; font-weight: 500;">{prev_change}</td>
-    <td style="color: {change_color}; font-weight: 500;">{estimate_change}</td>
-    <td style="color: {zone_color};">{zone_label}</td>
-    <td style="font-weight: 600; color: #0369a1;">{multiplier_display}</td>
-    <td style="text-align: right;">
+    <td style="color: {change_color}; font-weight: 500; white-space: nowrap;">{estimate_change}</td>
+    <td style="color: {zone_color}; white-space: nowrap;">{zone_label}</td>
+    <td style="font-weight: 600; color: #0369a1; white-space: nowrap;">{multiplier_display}</td>
+    <td style="text-align: right; white-space: nowrap;">
         <span class="decision-tag" style="background: {decision_bg}; color: {decision_color};">{decision}</span>
     </td>
 </tr>"""
@@ -556,6 +555,7 @@ FUND_SECTION_TEMPLATE = """<div class="fund-card">
                 <div class="metric-value">{ma_deviation:+.2f}%</div>
             </div>
         </div>
+        {recent_changes_html}
         <!-- Consensus -->
         <div style="background: #f1f5f9; border-radius: 4px; padding: 6px 12px; margin-bottom: 12px; font-size: 13px;">
             <span style="color: #64748b;">多周期共识:</span>
@@ -600,14 +600,6 @@ def generate_combined_email_html(
     # Summary Rows
     summary_rows = []
     for report in reports:
-        # 昨日涨跌
-        if report.previous_change is not None:
-            prev_change_display = _format_change(report.previous_change)
-            prev_change_color = _get_change_color(report.previous_change)
-        else:
-            prev_change_display = "—"
-            prev_change_color = "#94a3b8"
-
         # QDII有期货则显示期货值，否则显示失败
         if report.fund_type == "QDII":
             if report.nq_change_pct is not None:
@@ -628,8 +620,6 @@ def generate_combined_email_html(
         summary_rows.append(SUMMARY_ROW_TEMPLATE.format(
             fund_name=report.fund_name,
             fund_code=report.fund_code,
-            prev_change=prev_change_display,
-            prev_color=prev_change_color,
             estimate_change=display_label,
             change_color=_get_change_color(display_change),
             zone_label=_get_zone_label(report.zone),
@@ -702,6 +692,25 @@ def generate_combined_email_html(
             else:
                 card_change = None
                 card_label = "失败"
+                
+        # 过去5个交易日走势
+        if report.recent_5_changes:
+            recent_html_parts = []
+            for date_str, change in report.recent_5_changes:
+                color = _get_change_color(change)
+                sign = "+" if change > 0 else ""
+                html = f'''
+            <div class="metric-item">
+                <div class="metric-label">{date_str}</div>
+                <div class="metric-value" style="color: {color}; font-size: 14px;">{sign}{change:.2f}%</div>
+            </div>'''
+                recent_html_parts.append(html)
+            recent_changes_html = f"""
+        <div class="metrics-grid">
+            {"".join(recent_html_parts)}
+        </div>"""
+        else:
+            recent_changes_html = ""
         
         # Consensus display
         consensus_label = report.percentile_consensus or "—"
@@ -726,6 +735,7 @@ def generate_combined_email_html(
             percentile_1250=report.percentile_1250 or 0,
             zone_color=_get_zone_color(report.zone),
             ma_deviation=report.ma_deviation,
+            recent_changes_html=recent_changes_html,
             
             consensus_label=consensus_label,
             consensus_color=consensus_color,
