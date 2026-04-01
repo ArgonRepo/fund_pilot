@@ -22,7 +22,8 @@
 | **动态风控** | 针对黄金/周期/固收+/纯债/美股自动匹配波动率阈值 |
 | **5年长周期视野** | 数据回溯从 2年(520d) 扩展至 5年(1250d)，穿越牛熊周期，估值更具历史厚度 |
 | **排名分位算法** | 引入 `Rank Percentile` 替代传统 Range Percentile，有效抵抗极端值干扰，更稳健 |
-| **专业邮件报告** | 暗色主题、持仓透视、置信度百分比、结构化 AI 分析 |
+| **盘中估值回溯** | 自动记录每次发信时的盘中估值快照（含 QDII 期货数据），与确认净值形成 5 日对比，用以回溯估值精准度 |
+| **专业邮件报告** | 暗色主题、持仓透视、置信度百分比、结构化 AI 分析、估值回溯对比 |
 
 ---
 
@@ -176,7 +177,7 @@ cp .env.example .env
 
 ### 3. 创建 systemd 服务
 ```bash
-sudo vim /etc/systemd/system/fundpilot.service
+sudo vim /etc/systemd/system/fund_pilot.service
 ```
 
 ```ini
@@ -200,16 +201,16 @@ WantedBy=multi-user.target
 ### 4. 启用服务
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable fundpilot
-sudo systemctl start fundpilot
+sudo systemctl enable fund_pilot
+sudo systemctl start fund_pilot
 ```
 
 ### 5. 常用命令
 ```bash
-sudo systemctl status fundpilot   # 查看状态
-sudo systemctl restart fundpilot  # 重启服务
-sudo journalctl -u fundpilot -f   # 查看实时日志
-tail -f logs/fundpilot.log        # 查看日志文件
+sudo systemctl status fund_pilot   # 查看状态
+sudo systemctl restart fund_pilot  # 重启服务
+sudo journalctl -u fund_pilot -f   # 查看实时日志
+tail -f logs/fundpilot.log         # 查看日志文件（日志本身还是在相对路径 logs 下）
 ```
 
 ---
