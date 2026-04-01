@@ -697,41 +697,48 @@ def generate_combined_email_html(
         # 过去5个交易日走势 + 估值回溯
         if report.recent_5_changes:
             recent_html_parts = []
-            for date_str, change in report.recent_5_changes:
+            has_estimates = bool(report.recent_5_estimates) and len(report.recent_5_estimates) == len(report.recent_5_changes)
+            
+            for i, (date_str, change) in enumerate(report.recent_5_changes):
                 color = _get_change_color(change)
                 sign = "+" if change > 0 else ""
-                html = f'''
-            <div class="metric-item">
-                <div class="metric-label">{date_str}</div>
-                <div class="metric-value" style="color: {color}; font-size: 14px;">{sign}{change:.2f}%</div>
-            </div>'''
-                recent_html_parts.append(html)
-            recent_changes_html = f"""
-        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 4px;">近5日确认净值</div>
-        <div class="metrics-grid">
-            {"".join(recent_html_parts)}
-        </div>"""
-            # 估值回溯行
-            if report.recent_5_estimates:
-                est_html_parts = []
-                for est_date_str, est_change in report.recent_5_estimates:
+                val_str = f"{sign}{change:.2f}%"
+                
+                if has_estimates:
+                    _, est_change = report.recent_5_estimates[i]
                     if est_change is not None:
                         est_color = _get_change_color(est_change)
                         est_sign = "+" if est_change > 0 else ""
                         est_val = f"{est_sign}{est_change:.2f}%"
                     else:
                         est_color = "#94a3b8"
-                        est_val = "\u2014"
+                        est_val = "—"
+                        
+                    html = f'''
+            <div class="metric-item" style="padding: 8px 10px;">
+                <div class="metric-label" style="border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; margin-bottom: 6px;">{date_str}</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <span style="font-size: 11px; color: #64748b;">净值</span>
+                    <span style="font-size: 13px; font-weight: 600; color: {color};">{val_str}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 11px; color: #64748b;">估值</span>
+                    <span style="font-size: 13px; font-weight: 600; color: {est_color};">{est_val}</span>
+                </div>
+            </div>'''
+                else:
                     html = f'''
             <div class="metric-item">
-                <div class="metric-label">{est_date_str}</div>
-                <div class="metric-value" style="color: {est_color}; font-size: 14px;">{est_val}</div>
+                <div class="metric-label">{date_str}</div>
+                <div class="metric-value" style="color: {color}; font-size: 14px;">{val_str}</div>
             </div>'''
-                    est_html_parts.append(html)
-                recent_changes_html += f"""
-        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 4px; margin-top: 6px;">当时盘中估值</div>
+                recent_html_parts.append(html)
+                
+            title_text = "近5日净值与估值回溯" if has_estimates else "近5日确认净值"
+            recent_changes_html = f"""
+        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 6px;">{title_text}</div>
         <div class="metrics-grid">
-            {"".join(est_html_parts)}
+            {"".join(recent_html_parts)}
         </div>"""
         else:
             recent_changes_html = ""
