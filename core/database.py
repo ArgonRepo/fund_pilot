@@ -71,11 +71,23 @@ CREATE TABLE IF NOT EXISTS holdings_cache (
     UNIQUE(fund_code, stock_code)
 );
 
+-- 盘中估值快照表（记录每次发送邮件时的实时估值/期货估值，用于事后回溯）
+CREATE TABLE IF NOT EXISTS valuation_snapshot (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fund_code TEXT NOT NULL,
+    snapshot_date DATE NOT NULL,
+    estimate_change REAL NOT NULL,
+    source TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(fund_code, snapshot_date)
+);
+
 -- 创建索引
 CREATE INDEX IF NOT EXISTS idx_nav_fund_date ON fund_nav_history(fund_code, nav_date);
 CREATE INDEX IF NOT EXISTS idx_decision_fund_time ON decision_log(fund_code, decision_time);
 CREATE INDEX IF NOT EXISTS idx_decision_time ON decision_log(decision_time);
 CREATE INDEX IF NOT EXISTS idx_holdings_fund ON holdings_cache(fund_code);
+CREATE INDEX IF NOT EXISTS idx_snapshot_fund_date ON valuation_snapshot(fund_code, snapshot_date);
 """
 
 
@@ -239,6 +251,51 @@ class Database:
             if row and row["updated_at"]:
                 return datetime.fromisoformat(row["updated_at"])
             return None
+
+    # ==================== 估值快照操作 ====================
+
+    def save_valuation_snapshot(
+        self, fund_code: str, snapshot_date: date,
+        estimate_change: float, source: str = None
+    ):
+        """保存估值快照（发送邮件时的实时估值/期货估值）"""
+        with self.get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO valuation_snapshot
+                (fund_code, snapshot_date, estimate_change, source)
+                VALUES (?, ?, ?, ?)
+                """,
+                (fund_code, snapshot_date.isoformat(), estimate_change, source)
+            )
+        logger.info(f"保存估值快照: {fund_code} {snapshot_date} {estimate_change:+.2f}% [{source}]")
+
+    def get_valuation_snapshots(
+        self, fund_code: str, dates: list[date]
+    ) -> dict[str, float]:
+        """
+        获取指定日期的估值快照
+
+        Args:
+            fund_code: 基金代码
+            dates: 日期列表
+
+        Returns:
+            {ISO日期字符串: 估值涨跌幅} 字典
+        """
+        if not dates:
+            return {}
+        with self.get_connection() as conn:
+            placeholders = ','.join(['?' for _ in dates])
+            date_strs = [d.isoformat() for d in dates]
+            cursor = conn.execute(
+                f"""
+                SELECT snapshot_date, estimate_change FROM valuation_snapshot
+                WHERE fund_code = ? AND snapshot_date IN ({placeholders})
+                """,
+                [fund_code] + date_strs
+            )
+            return {row["snapshot_date"]: row["estimate_change"] for row in cursor}
 
 
 # 全局数据库实例

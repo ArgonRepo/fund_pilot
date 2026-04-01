@@ -180,7 +180,38 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         final_multiplier = strategy_result.buy_multiplier
         final_decision = strategy_result.decision.value
         
-        # 11. 生成图表
+        # 11. 保存估值快照（记录邮件发送时的实时估值/期货估值，用于事后回溯）
+        snapshot_estimate = None
+        snapshot_source = None
+        if fund.type == "QDII":
+            if us_futures:
+                snapshot_estimate = us_futures.change_pct
+                snapshot_source = f"futures:{us_futures.futures_symbol}"
+        else:
+            if valuation:
+                snapshot_estimate = valuation.estimate_change
+                snapshot_source = "fund_valuation"
+        
+        if snapshot_estimate is not None:
+            db.save_valuation_snapshot(
+                fund_code=fund.code,
+                snapshot_date=datetime.now().date(),
+                estimate_change=snapshot_estimate,
+                source=snapshot_source
+            )
+        
+        # 12. 查询过去5日的历史估值快照（用于与确认净值对比）
+        recent_5_estimates = []
+        if recent_5_changes:
+            past_dates = [history[i][0] for i in range(min(5, len(history) - 1))]
+            past_dates.reverse()  # 与 recent_5_changes 同为时间正序
+            snapshots = db.get_valuation_snapshots(fund.code, past_dates)
+            for d in past_dates:
+                d_str = d.strftime("%m-%d") if hasattr(d, 'strftime') else str(d)[5:10]
+                est = snapshots.get(d.isoformat() if hasattr(d, 'isoformat') else str(d))
+                recent_5_estimates.append((d_str, est))
+        
+        # 13. 生成图表
         recent_90 = get_recent_nav(history, 90)
         recent_90_asc = list(reversed(recent_90))
         
@@ -192,7 +223,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             estimate_change=daily_change
         )
         
-        # 12. 构建报告数据
+        # 14. 构建报告数据
         report = FundReport(
             fund_name=fund.name,
             fund_code=fund.code,
@@ -202,6 +233,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             estimate_change=realtime_change,
             previous_change=previous_change,
             recent_5_changes=recent_5_changes,
+            recent_5_estimates=recent_5_estimates,
             percentile_250=metrics.percentile_250,
             ma_deviation=metrics.ma_deviation,
             zone=strategy_result.zone,
@@ -225,7 +257,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             nq_futures_symbol=us_futures.futures_symbol if us_futures else None
         )
         
-        # 13. 记录决策日志
+        # 15. 记录决策日志
         db.save_decision_log(
             fund_code=fund.code,
             fund_name=fund.name,

@@ -42,6 +42,7 @@ class FundReport:
     # 其他
     previous_change: Optional[float] = None        # 昨日估值涨跌幅
     recent_5_changes: list[tuple[str, float]] = field(default_factory=list) # 过去5交易日涨跌幅
+    recent_5_estimates: list[tuple[str, float | None]] = field(default_factory=list) # 对应日期的盘中估值回溯
 
 
 # ============================================================
@@ -693,7 +694,7 @@ def generate_combined_email_html(
                 card_change = None
                 card_label = "失败"
                 
-        # 过去5个交易日走势
+        # 过去5个交易日走势 + 估值回溯
         if report.recent_5_changes:
             recent_html_parts = []
             for date_str, change in report.recent_5_changes:
@@ -706,8 +707,31 @@ def generate_combined_email_html(
             </div>'''
                 recent_html_parts.append(html)
             recent_changes_html = f"""
+        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 4px;">近5日确认净值</div>
         <div class="metrics-grid">
             {"".join(recent_html_parts)}
+        </div>"""
+            # 估值回溯行
+            if report.recent_5_estimates:
+                est_html_parts = []
+                for est_date_str, est_change in report.recent_5_estimates:
+                    if est_change is not None:
+                        est_color = _get_change_color(est_change)
+                        est_sign = "+" if est_change > 0 else ""
+                        est_val = f"{est_sign}{est_change:.2f}%"
+                    else:
+                        est_color = "#94a3b8"
+                        est_val = "\u2014"
+                    html = f'''
+            <div class="metric-item">
+                <div class="metric-label">{est_date_str}</div>
+                <div class="metric-value" style="color: {est_color}; font-size: 14px;">{est_val}</div>
+            </div>'''
+                    est_html_parts.append(html)
+                recent_changes_html += f"""
+        <div style="font-size: 11px; color: #94a3b8; margin-bottom: 4px; margin-top: 6px;">当时盘中估值</div>
+        <div class="metrics-grid">
+            {"".join(est_html_parts)}
         </div>"""
         else:
             recent_changes_html = ""
