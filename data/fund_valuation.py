@@ -4,7 +4,7 @@ FundPilot 实时估值获取模块
 
 数据源: api.fund.eastmoney.com/FundGuZhi/GetFundGZList
 - 与已下线的天天基金 fundgz.1234567.com.cn 同源（天天基金属东方财富旗下，共用估值引擎）
-- 一次拉取全市场基金估值表，模块级缓存（TTL 5 分钟），整轮任务只请求 1 次
+- 分页拉取全市场基金估值表（全市场约 2.3 万只），模块级缓存（TTL 5 分钟），整轮任务只请求 1 次
 
 字段映射（与 FundValuation 数据类保持一致）:
   gsz   -> estimate_nav     盘中预估净值
@@ -52,6 +52,12 @@ _estimate_table_time: Optional[datetime] = None
 _estimate_table_day: Optional[str] = None  # 估算交易日 gxrq
 _CACHE_TTL_SECONDS = 300  # 缓存有效期 5 分钟
 
+# 估值表分页参数
+# 全市场基金约 2.3 万只，单页 pageSize 设为 5 万通常一页即可取全；
+# 分页 + 不足一页即停 作为未来基金数增长的自适应与截断防御。
+_PAGE_SIZE = 50000
+_MAX_PAGES = 3  # 安全上限：3 页 × 5 万 = 15 万，远超现实基金总数
+
 
 def clear_estimate_cache():
     """清除估值表缓存（供测试或强制刷新使用）"""
@@ -81,47 +87,71 @@ def _fetch_estimate_table() -> Optional[tuple[dict[str, dict], str]]:
     if _is_cache_valid():
         return _estimate_table, _estimate_table_day
 
-    logger.info("拉取东方财富基金盘中估值表...")
+    logger.info("拉取东方财富基金盘中估值表（分页）...")
 
-    params = {
-        "type": "1",          # 全部基金
-        "sort": "3",
-        "orderType": "desc",
-        "canbuy": "0",
-        "pageIndex": "1",
-        "pageSize": "20000",
-        "_": str(int(datetime.now().timestamp() * 1000)),
-    }
-    # 东财接口需要 Referer，用 https 更稳
     extra_headers = {"Referer": "https://fund.eastmoney.com/"}
 
-    try:
-        response = get(
-            FUND_GZ_API,
-            source="eastmoney",
-            timeout=15,
-            params=params,
-            headers=extra_headers,
-        )
-        payload = response.json()
-    except Exception as e:
-        logger.error(f"获取基金估值表失败: {e}")
-        return None
+    table: dict[str, dict] = {}
+    gxrq: Optional[str] = None
 
-    data = payload.get("Data") or {}
-    rows = data.get("list") or []
-    gxrq = data.get("gxrq") or datetime.now().strftime("%Y-%m-%d")
+    for page_index in range(1, _MAX_PAGES + 1):
+        params = {
+            "type": "1",          # 全部基金
+            "sort": "3",
+            "orderType": "desc",
+            "canbuy": "0",
+            "pageIndex": str(page_index),
+            "pageSize": str(_PAGE_SIZE),
+            "_": str(int(datetime.now().timestamp() * 1000)),
+        }
 
-    if not rows:
+        try:
+            response = get(
+                FUND_GZ_API,
+                source="eastmoney",
+                timeout=15,
+                params=params,
+                headers=extra_headers,
+            )
+            payload = response.json()
+        except Exception as e:
+            logger.error(f"获取基金估值表失败（第{page_index}页）: {e}")
+            return None
+
+        data = payload.get("Data") or {}
+        rows = data.get("list") or []
+
+        # gxrq（估算交易日）各页一致，仅取首页
+        if gxrq is None:
+            gxrq = data.get("gxrq") or datetime.now().strftime("%Y-%m-%d")
+
+        if not rows:
+            # 空页：已无更多数据
+            break
+
+        # 构建代码索引（bzdm 为基金代码）
+        for row in rows:
+            code = str(row.get("bzdm") or "").strip()
+            if code:
+                table[code] = row
+
+        # 本页不足一页 → 已到末页，停止翻页
+        if len(rows) < _PAGE_SIZE:
+            break
+
+        if page_index == _MAX_PAGES:
+            # 最后一页仍满页：说明实际基金数超过 _MAX_PAGES × _PAGE_SIZE，仍有截断
+            logger.warning(
+                f"估值表翻页已达上限（{_MAX_PAGES}页，累计 {len(table)} 只），"
+                f"可能仍有截断，建议调大 _MAX_PAGES"
+            )
+
+    if gxrq is None:
+        gxrq = datetime.now().strftime("%Y-%m-%d")
+
+    if not table:
         logger.warning("基金估值表为空")
         return None
-
-    # 构建代码索引（bazdm 为基金代码）
-    table: dict[str, dict] = {}
-    for row in rows:
-        code = str(row.get("bzdm") or "").strip()
-        if code:
-            table[code] = row
 
     _estimate_table = table
     _estimate_table_time = datetime.now()

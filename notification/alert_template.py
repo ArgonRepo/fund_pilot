@@ -19,6 +19,7 @@ class AlertFundData:
     ma_deviation: float          # 均线偏离
     zone: str                    # 估值区间
     drawdown: float              # 60日回撤
+    error: Optional[str] = None  # 取数失败原因（非空表示该基金本次数据缺失）
     holdings_txt: Optional[str] = None # 持仓概览 (前3大重仓+涨跌)
     percentile_60: Optional[float] = None   # 60日分位
     percentile_1250: Optional[float] = None  # 1250日分位
@@ -393,6 +394,13 @@ HOLDINGS_ROW_TEMPLATE = """<tr>
 </tr>"""
 
 
+# 取数失败行：仅基金名 + 跨列失败提示（主估值表5列，跨4列）
+ALERT_FAILED_ROW_TEMPLATE = """<tr>
+    <td class="fund-name-cell">{fund_name}<span class="fund-type-badge">{fund_type}</span></td>
+    <td colspan="4" style="color:#94a3b8; font-style:italic;">⚠️ 数据获取失败：{error}</td>
+</tr>"""
+
+
 def generate_alert_email_html(
     funds: list[AlertFundData],
     market: Optional[MarketData],
@@ -431,6 +439,18 @@ def generate_alert_email_html(
     # 基金估值行
     fund_rows = []
     for fund in funds:
+        # 失败基金：仅在估值表标注失败原因（与 funds.json 对齐，不静默吞掉）
+        if fund.error:
+            name = fund.fund_name
+            if len(name) > 10:
+                name = name[:9] + "…"
+            fund_rows.append(ALERT_FAILED_ROW_TEMPLATE.format(
+                fund_name=name,
+                fund_type=_get_fund_type_short(fund.fund_type),
+                error=fund.error
+            ))
+            continue
+
         zone_bg, zone_color = _get_zone_style(fund.zone)
         
         # 基金名称截断
@@ -474,10 +494,14 @@ def generate_alert_email_html(
     holdings_rows = []
     
     for fund in funds:
+        # 失败基金无指标/持仓数据，跳过这两张表（避免渲染误导性的 0 值）
+        if fund.error:
+            continue
+
         name = fund.fund_name
         if len(name) > 8:
             name = name[:7] + "…"
-        
+
         metrics_rows.append(METRICS_ROW_TEMPLATE.format(
             fund_name_short=name,
             ma_deviation=_format_change(fund.ma_deviation),

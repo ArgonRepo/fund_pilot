@@ -20,6 +20,7 @@ class FundReport:
     percentile_250: float  # 250 日分位值（主要参考）
     ma_deviation: float
     zone: str
+    error: Optional[str] = None             # 取数失败原因（非空表示本次未生成决策）
     holdings_summary: Optional[str] = None
     top_gainers: Optional[list[str]] = None
     top_losers: Optional[list[str]] = None
@@ -588,6 +589,30 @@ FUND_SECTION_TEMPLATE = """<div class="fund-card">
 </div>"""
 
 
+# 取数失败总览行（summary 表 5 列：基金/估值/水平/倍数/操作，跨 4 列）
+FAILED_SUMMARY_ROW_TEMPLATE = """<tr>
+    <td>
+        <div style="font-weight: 500; font-size: 13px;">{fund_name}</div>
+        <div style="font-size: 11px; margin-top: 2px; color: #94a3b8;">{fund_code}</div>
+    </td>
+    <td colspan="4" style="color:#94a3b8; font-style:italic;">⚠️ 数据获取失败：{error}</td>
+</tr>"""
+
+
+# 取数失败详情卡片（无图表/指标/决策，仅标注失败原因）
+FAILED_FUND_SECTION_TEMPLATE = """<div class="fund-card">
+    <div class="fund-header">
+        <div class="fund-name">{fund_name} <span class="fund-meta">({fund_code} · {fund_type})</span></div>
+    </div>
+    <div class="fund-body">
+        <div class="warning-box">
+            ⚠️ 数据获取失败，本次未生成决策建议。<br>
+            <span style="font-size:12px;">原因：{error}</span>
+        </div>
+    </div>
+</div>"""
+
+
 def generate_combined_email_html(
     reports: list[FundReport],
     time_str: str,
@@ -601,6 +626,14 @@ def generate_combined_email_html(
     # Summary Rows
     summary_rows = []
     for report in reports:
+        # 取数失败的基金：总览标注失败，与 funds.json 对齐（不静默吞掉）
+        if report.error:
+            summary_rows.append(FAILED_SUMMARY_ROW_TEMPLATE.format(
+                fund_name=report.fund_name,
+                fund_code=report.fund_code,
+                error=report.error
+            ))
+            continue
         # QDII有期货则显示期货值，否则显示失败
         if report.fund_type == "QDII":
             if report.nq_change_pct is not None:
@@ -634,6 +667,15 @@ def generate_combined_email_html(
     # Fund Sections
     fund_sections = []
     for i, report in enumerate(reports):
+        # 取数失败的基金：渲染失败卡片，跳过正常指标/图表/决策渲染
+        if report.error:
+            fund_sections.append(FAILED_FUND_SECTION_TEMPLATE.format(
+                fund_name=report.fund_name,
+                fund_code=report.fund_code,
+                fund_type=_get_fund_type_label(report.fund_type),
+                error=report.error
+            ))
+            continue
         # Warning - format as numbered list
         warning_html = ""
         if report.warnings:
@@ -792,22 +834,25 @@ def generate_combined_email_html(
 
 
 def generate_combined_email_subject(reports: list[FundReport], time_str: str = "") -> str:
-    """生成邮件标题"""
+    """生成邮件标题（取数失败的报告不参与决策统计，保持标题简洁）"""
     if not reports:
         return "[FundPilot] 今日无基金数据"
-    
+
     today = datetime.now()
     date_short = f"{today.month:02d}.{today.day:02d}"
-    
+
+    # 仅统计成功生成决策的报告（失败报告计入邮件正文，但不进标题）
+    valid_reports = [r for r in reports if not r.error]
+    if not valid_reports:
+        return f"[Fund Pilot] 投资决策 ({date_short}) - 数据全部获取失败"
+
     # 统计各决策数量
     decisions = {}
-    for r in reports:
+    for r in valid_reports:
         d = r.decision
         decisions[d] = decisions.get(d, 0) + 1
-    
+
     # 生成决策摘要
-    summary_parts = []
-    for d, count in decisions.items():
-        summary_parts.append(f"{count}{d}")
-    
+    summary_parts = [f"{count}{d}" for d, count in decisions.items()]
+
     return f"[Fund Pilot] 投资决策 ({date_short}) - {'、'.join(summary_parts)}"
