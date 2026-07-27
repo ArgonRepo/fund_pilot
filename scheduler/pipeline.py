@@ -73,7 +73,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         # 2. 获取实时估值（QDII 不走估值API，实时参考来自期货）
         valuation = None
         if fund.has_realtime_valuation:
-            valuation = fetch_fund_valuation(fund.code)
+            valuation = fetch_fund_valuation(fund.code, fund.underlying_etf)
             if not valuation:
                 logger.warning(f"基金 {fund.code} 获取估值失败")
                 return FundResult(fund=fund, success=False, error="获取估值失败")

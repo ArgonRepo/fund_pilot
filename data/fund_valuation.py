@@ -18,6 +18,7 @@ FundPilot 实时估值获取模块
   预警(12:30)/决策(14:40)均在 A 股盘中触发，此时估值表为盘中实时刷新状态。
 """
 
+import re
 from datetime import datetime, date
 from dataclasses import dataclass
 from typing import Optional
@@ -186,12 +187,131 @@ def _parse_float(value) -> Optional[float]:
         return None
 
 
-def fetch_fund_valuation(fund_code: str) -> Optional[FundValuation]:
+# ============================================================
+# ETF 代理估值（东财估值引擎宕机时的回退数据源）
+# ============================================================
+
+def _etf_market_prefix(etf_code: str) -> str:
+    """ETF 代码 → 交易所前缀。5/6/9 开头为沪市(sh)，0/1/3 开头为深市(sz)。"""
+    head = str(etf_code).strip()[:1]
+    return "sh" if head in ("5", "6", "9") else "sz"
+
+
+def _fetch_etf_realtime_change(etf_code: str) -> Optional[tuple[float, str]]:
+    """
+    获取底层 ETF 实时涨跌幅（%）——东财估值引擎宕机时的代理数据源。
+
+    腾讯 qt.gtimg.cn 优先（纯文本报价、独立于东财），东财股票行情 push2 兜底
+    （与挂掉的估值引擎是两套独立接口）。两者 2026-07-27 估值引擎宕机时实测均可用。
+
+    Returns:
+        (涨跌幅%, 数据源名) 或 None
+    """
+    etf_code = str(etf_code).strip().zfill(6)
+    prefix = _etf_market_prefix(etf_code)
+
+    # 1. 腾讯行情：纯文本，现价(fields[3])/昨收(fields[4]) 直接可读
+    try:
+        resp = get(
+            f"http://qt.gtimg.cn/q={prefix}{etf_code}",
+            source="eastmoney",
+            timeout=8,
+            headers={"Referer": "https://gu.qq.com/"},
+        )
+        m = re.search(r'"([^"]+)"', resp.text)
+        if m:
+            fields = m.group(1).split("~")
+            if len(fields) > 4:
+                cur = _parse_float(fields[3])
+                prev = _parse_float(fields[4])
+                if cur is not None and prev and prev > 0:
+                    return ((cur - prev) / prev * 100.0, "腾讯qt")
+    except Exception as e:
+        logger.warning(f"代理估值：腾讯 ETF 行情获取失败 {etf_code}: {e}")
+
+    # 2. 东财股票行情 push2：f170 为涨跌幅（放大 100 倍的整数）
+    try:
+        secid = f"{'1' if prefix == 'sh' else '0'}.{etf_code}"
+        resp = get(
+            "https://push2.eastmoney.com/api/qt/stock/get",
+            source="eastmoney",
+            timeout=8,
+            params={"fields": "f43,f60,f170", "secid": secid},
+            headers={"Referer": "https://quote.eastmoney.com/"},
+        )
+        data = (resp.json() or {}).get("data") or {}
+        pct = data.get("f170")
+        if pct is not None:
+            return (float(pct) / 100.0, "东财股票行情")
+    except Exception as e:
+        logger.warning(f"代理估值：东财股票行情 ETF 获取失败 {etf_code}: {e}")
+
+    return None
+
+
+def _fetch_etf_proxy_valuation(fund_code: str, etf_code: str) -> Optional[FundValuation]:
+    """
+    ETF 联接基金代理估值：用底层 ETF 实时涨跌近似基金盘中估值。
+
+    当东财估值引擎宕机（估值表拉不到 / 该基金不在表内）时，对配置了 underlying_etf
+    的 ETF 联接基金，用底层 ETF 的盘中涨跌代替。ETF 实时价走东财股票行情引擎或腾讯，
+    与估值引擎相互独立，互为兜底。
+
+    estimate_nav 由「基金最新确认净值 ×(1+ETF涨跌)」缩放得到（与东财官方估算口径一致）。
+    存在 ETF 联接的跟踪误差（通常 <0.3%），仅作宕机兜底，日志中以「ETF代理」标记。
+
+    Returns:
+        FundValuation 或 None（ETF 行情或基金净值都拿不到时）
+    """
+    change = _fetch_etf_realtime_change(etf_code)
+    if change is None:
+        logger.warning(f"代理估值：底层 ETF {etf_code} 实时行情也未取到，回退失败")
+        request_stats.record_failure()
+        return None
+    etf_change, src = change
+
+    # 基金最新确认净值（用于把 ETF 涨跌缩放到基金净值口径）
+    last_nav = None
+    try:
+        from data.fund_history import get_fund_history
+        history = get_fund_history(fund_code, days=5)
+        if history:
+            last_nav = history[0][1]
+    except Exception as e:
+        logger.warning(f"代理估值：获取基金 {fund_code} 最新净值失败: {e}")
+
+    if not last_nav or last_nav <= 0:
+        logger.warning(f"代理估值：基金 {fund_code} 最新净值缺失，无法缩放，回退失败")
+        request_stats.record_failure()
+        return None
+
+    estimate_nav = last_nav * (1 + etf_change / 100.0)
+    request_stats.record_success()
+    logger.info(
+        f"代理估值: 基金 {fund_code} ← 底层ETF {etf_code} {etf_change:+.2f}% "
+        f"预估净值={estimate_nav:.4f} 基准净值={last_nav:.4f} [来源:{src}·ETF代理]"
+    )
+    return FundValuation(
+        fund_code=fund_code,
+        fund_name="",
+        nav=last_nav,
+        estimate_nav=estimate_nav,
+        estimate_change=etf_change,
+        estimate_time=datetime.now(),
+        is_stale=False,
+    )
+
+
+def fetch_fund_valuation(fund_code: str, underlying_etf: Optional[str] = None) -> Optional[FundValuation]:
     """
     获取基金实时估值（从东方财富全量估值表查询单只基金）
 
+    主路径：东财估值表。失败（估值引擎宕机 / 该基金不在表内）时，若该基金配置了
+    underlying_etf，则自动回退到「底层 ETF 实时涨跌」代理估值（见 _fetch_etf_proxy_valuation）。
+
     Args:
         fund_code: 基金代码
+        underlying_etf: ETF 联接基金的底层 ETF 代码（可选，启用宕机代理回退）
 
     Returns:
         FundValuation 对象，失败返回 None
@@ -200,12 +320,22 @@ def fetch_fund_valuation(fund_code: str) -> Optional[FundValuation]:
 
     result = _fetch_estimate_table()
     if result is None:
+        # 估值引擎整体不可用 → 尝试 ETF 代理回退（仅对配了 underlying_etf 的基金）
+        if underlying_etf:
+            proxy = _fetch_etf_proxy_valuation(fund_code, underlying_etf)
+            if proxy:
+                return proxy
         request_stats.record_failure()
         return None
 
     table, gxrq = result
     row = table.get(fund_code)
     if not row:
+        # 估值表正常但该基金不在表内 → 尝试 ETF 代理回退
+        if underlying_etf:
+            proxy = _fetch_etf_proxy_valuation(fund_code, underlying_etf)
+            if proxy:
+                return proxy
         logger.warning(f"基金 {fund_code} 不在估值表中（可能为 QDII/未披露估值/已下线）")
         request_stats.record_failure()
         return None

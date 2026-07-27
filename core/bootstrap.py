@@ -125,7 +125,7 @@ def _run_test_mode():
     if config.funds:
         for fund in config.funds[:2]:
             logger.info(f"测试获取 {fund.name} 估值...")
-            valuation = fetch_fund_valuation(fund.code)
+            valuation = fetch_fund_valuation(fund.code, fund.underlying_etf)
             if valuation:
                 logger.info(f"  估值: {valuation.estimate_change:+.2f}%, 时间: {valuation.estimate_time}")
             else:

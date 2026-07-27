@@ -73,7 +73,7 @@ def _collect_alert_fund_data(fund):
         # 实时估值（QDII 不走估值API，盘中参考来自期货）
         valuation = None
         if fund.type != "QDII":
-            valuation = fetch_fund_valuation(fund.code)
+            valuation = fetch_fund_valuation(fund.code, fund.underlying_etf)
             if not valuation:
                 return _failed_alert_fund(fund, "实时估值未取到")
 
