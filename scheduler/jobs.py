@@ -71,11 +71,10 @@ def _collect_alert_fund_data(fund):
 
     try:
         # 实时估值（QDII 不走估值API，盘中参考来自期货）
+        # 估值取不到不再整只失败：降级用「前日净值」口径展示，邮件中标注来源
         valuation = None
         if fund.type != "QDII":
             valuation = fetch_fund_valuation(fund.code, fund.underlying_etf)
-            if not valuation:
-                return _failed_alert_fund(fund, "实时估值未取到")
 
         # 历史净值（用于多周期分位等指标）
         history = get_fund_history(fund.code, days=1250)
@@ -83,10 +82,12 @@ def _collect_alert_fund_data(fund):
             return _failed_alert_fund(fund, "历史净值未取到")
 
         # 估值降级: 用于指标计算
+        estimate_source = None
         if valuation:
             current_price = valuation.estimate_nav
             daily_change = valuation.estimate_change
             realtime_change = valuation.estimate_change
+            estimate_source = valuation.source  # eastmoney / etf_proxy / holdings_weighted
         else:
             current_price = history[0][1]
             if len(history) >= 2:
@@ -94,7 +95,9 @@ def _collect_alert_fund_data(fund):
                 daily_change = (current_price - prev_price) / prev_price * 100
             else:
                 daily_change = 0.0
-            realtime_change = None
+            # QDII 盘中显示期货参考；其余基金（债基等）降级显示前日净值涨跌
+            realtime_change = None if fund.type == "QDII" else daily_change
+            estimate_source = None if fund.type == "QDII" else "last_nav"
 
         prices_history = [nav for _, nav in history]
         metrics = calculate_all_metrics(
@@ -155,6 +158,7 @@ def _collect_alert_fund_data(fund):
             fund_code=fund.code,
             fund_type=fund.type,
             estimate_change=realtime_change,
+            estimate_source=estimate_source,
             percentile_250=metrics.percentile_250,
             ma_deviation=metrics.ma_deviation,
             zone=zone,

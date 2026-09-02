@@ -30,6 +30,8 @@ class AlertFundData:
     nq_data_source: Optional[str] = None
     nq_market_status: Optional[str] = None
     nq_futures_symbol: Optional[str] = None
+    # 估值口径: eastmoney=官方表 / etf_proxy=ETF代理(基本准确) / holdings_weighted=持仓推算(可能不准) / last_nav=前日净值
+    estimate_source: Optional[str] = None
 
 
 @dataclass
@@ -52,6 +54,28 @@ def _get_change_color(change: float) -> str:
 
 def _format_change(change: float) -> str:
     return f"{change:+.2f}%"
+
+
+# 估值口径徽标：官方估值引擎下线期间，标注盘中估值的来源与可靠性
+# ETF代理=底层ETF实时价折算（基本准确）；持仓推算=前十大重仓加权估算（可能不准）；前日净值=无盘中数据
+_SOURCE_BADGES = {
+    "etf_proxy": ("ETF代理", "#E3F2FD", "#1565C0"),
+    "holdings_weighted": ("持仓推算", "#FFF3E0", "#E65100"),
+    "last_nav": ("前日净值", "#EEEEEE", "#616161"),
+}
+
+
+def _get_source_badge(source: Optional[str]) -> str:
+    """估值口径徽标 HTML（官方估值 eastmoney 返回空串，不额外标注）"""
+    if not source or source == "eastmoney":
+        return ""
+    text, bg, fg = _SOURCE_BADGES.get(source, ("", "", ""))
+    if not text:
+        return ""
+    return (
+        f'<span style="font-size:10px;background:{bg};color:{fg};'
+        f'padding:1px 4px;border-radius:3px;margin-left:4px;white-space:nowrap;">{text}</span>'
+    )
 
 
 def _get_zone_style(zone: str) -> tuple[str, str]:
@@ -359,6 +383,10 @@ ALERT_EMAIL_TEMPLATE = """<!DOCTYPE html>
                     <td class="term-cell">估值区间</td>
                     <td>根据资产类型动态划分：黄金坑→低估→合理→偏高→高估。不同资产的分界线不同。</td>
                 </tr>
+                <tr>
+                    <td class="term-cell">估值口径</td>
+                    <td>官方盘中估值暂不可用期间：ETF代理=按底层ETF实时价折算（基本准确）；持仓推算=按前十大重仓股加权估算（季报滞后、未披露部分按0计，可能不准，仅供参考）；前日净值=无盘中数据时展示上一确认日净值。</td>
+                </tr>
             </table>
         </div>
         
@@ -467,10 +495,10 @@ def generate_alert_email_html(
                 display_change = None
                 display_label = '<span style="color:#94a3b8">失败</span>'
         else:
-            # 实时估值无降级逻辑，获取不到则失败
+            # 估值降级链：官方/ETF代理/持仓推算 → 前日净值（徽标标注口径）
             if fund.estimate_change is not None:
                 display_change = fund.estimate_change
-                display_label = _format_change(display_change)
+                display_label = _format_change(display_change) + _get_source_badge(fund.estimate_source)
             else:
                 display_change = None
                 display_label = '<span style="color:#94a3b8">失败</span>'

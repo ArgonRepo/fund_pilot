@@ -168,6 +168,72 @@ def fetch_fund_holdings(fund_code: str, underlying_etf: Optional[str] = None) ->
         return []
 
 
+def fetch_holdings_weighted_change(fund_code: str, underlying_etf: Optional[str] = None) -> Optional[tuple[float, float]]:
+    """
+    持仓加权盘中涨跌（估值引擎宕机时的推算口径，与养基宝等工具同原理）
+
+    取最新一期前十大重仓股，按「占净值比例 × 实时涨跌」加权求和；
+    未披露部分按 0 处理（保守口径，倾向低估波动，季报调仓滞后也会引入误差）。
+
+    Args:
+        fund_code: 基金代码
+        underlying_etf: ETF 联接基金的底层 ETF 代码（穿透取 ETF 的股票持仓）
+
+    Returns:
+        (加权涨跌%, 覆盖权重%) 或 None（持仓/行情均不可用时）
+    """
+    try:
+        time.sleep(AKSHARE_REQUEST_INTERVAL)
+        df = ak.fund_portfolio_hold_em(symbol=underlying_etf or fund_code, date="")
+
+        if df is None or df.empty:
+            logger.warning(f"持仓推算: 基金 {fund_code} 无持仓数据")
+            return None
+
+        # AkShare 返回多期合并数据，按「季度」列取最新一期
+        if "季度" in df.columns:
+            latest_period = df["季度"].iloc[0]
+            df = df[df["季度"] == latest_period]
+
+        holdings: list[tuple[str, str, float]] = []
+        for _, row in df.head(10).iterrows():
+            code = str(row.get("股票代码", "")).strip()
+            name = str(row.get("股票名称", "")).strip()
+            try:
+                weight = float(row.get("占净值比例", 0) or 0)
+            except (TypeError, ValueError):
+                weight = 0.0
+            if code and name and weight > 0:
+                holdings.append((code, name, weight))
+
+        if not holdings:
+            return None
+
+        # 批量获取重仓股实时行情（腾讯，一次请求）
+        norm_codes = [_normalize_stock_code(c) for c, _, _ in holdings]
+        quotes = _batch_fetch_stock_quotes(norm_codes)
+
+        weighted = 0.0
+        covered = 0.0
+        for (code, name, weight), norm_code in zip(holdings, norm_codes):
+            change = quotes.get(norm_code)
+            if change is not None:
+                weighted += weight * change / 100.0
+                covered += weight
+
+        # 全部行情缺失（如债基持仓为债券，无股票行情）视为不可推算
+        if covered <= 0:
+            logger.info(f"持仓推算: 基金 {fund_code} 重仓股均无实时行情（可能为债券持仓），跳过")
+            return None
+
+        logger.info(f"持仓推算: 基金 {fund_code} 加权涨跌 {weighted:+.2f}%（覆盖净值 {covered:.1f}%）")
+        return (weighted, covered)
+
+    except Exception as e:
+        logger.warning(f"持仓推算: 基金 {fund_code} 失败: {e}")
+        return None
+
+
 def get_holdings_with_quotes(fund_config: FundConfig) -> Optional[HoldingsInsight]:
     """
     获取持仓及实时行情

@@ -71,23 +71,28 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             return FundResult(fund=fund, success=False, error="获取历史净值失败")
         
         # 2. 获取实时估值（QDII 不走估值API，实时参考来自期货）
+        # 估值取不到不再整只失败：降级用「前日净值」口径，邮件中标注来源
         valuation = None
         if fund.has_realtime_valuation:
             valuation = fetch_fund_valuation(fund.code, fund.underlying_etf)
             if not valuation:
-                logger.warning(f"基金 {fund.code} 获取估值失败")
-                return FundResult(fund=fund, success=False, error="获取估值失败")
-        
+                logger.warning(f"基金 {fund.code} 获取估值失败，降级用前日净值")
+
         # 3. 确定当前价格和日涨跌幅
         realtime_change = None
+        estimate_source = None
         if valuation:
             current_price = valuation.estimate_nav
             daily_change = valuation.estimate_change
             realtime_change = valuation.estimate_change
+            estimate_source = valuation.source  # eastmoney / etf_proxy / holdings_weighted
         else:
             current_price = history[0][1]  # history 降序，[0] 是最新
             prev_price = history[1][1] if len(history) >= 2 else current_price
             daily_change = (current_price - prev_price) / prev_price * 100 if prev_price else 0.0
+            # QDII 盘中显示期货参考；其余基金（债基等）降级显示前日净值涨跌
+            realtime_change = None if fund.type == "QDII" else daily_change
+            estimate_source = None if fund.type == "QDII" else "last_nav"
             logger.info(f"基金 {fund.code} 使用前日净值: {current_price:.4f} ({daily_change:+.2f}%)")
             
         # 计算昨日估值涨跌幅 (基于最新收盘净值)
@@ -159,9 +164,15 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             strategy_result.confidence = max(0.2, strategy_result.confidence - 0.15)
             logger.warning(f"基金 {fund.code} 估值数据已过期，置信度下调")
         elif not valuation:
-            strategy_result.warnings.append("⚠️ 无盘中估值（QDII-FOF），决策基于前日净值 + 期货参考")
+            strategy_result.warnings.append("⚠️ 无盘中估值，决策基于前日净值（QDII 另参考美股期货）")
             strategy_result.confidence = max(0.2, strategy_result.confidence - 0.1)
             logger.info(f"基金 {fund.code} 无盘中估值，置信度小幅下调")
+
+        # 持仓推算口径可靠性低于官方/ETF代理，加显著提示（邮件中同时有口径徽标）
+        if valuation and valuation.source == "holdings_weighted":
+            strategy_result.warnings.append(
+                "⚠️ 盘中估值为持仓加权推算（前十大重仓×实时行情，未披露部分按0计），季报调仓滞后可能不准，仅供参考"
+            )
         
         # 9. I5: QDII 数据时效性标注
         if fund.type == "QDII":
@@ -190,7 +201,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
         else:
             if valuation:
                 snapshot_estimate = valuation.estimate_change
-                snapshot_source = "fund_valuation"
+                snapshot_source = f"fund_valuation:{valuation.source}"  # 带口径便于事后回溯审计
         
         if snapshot_estimate is not None:
             db.save_valuation_snapshot(
@@ -231,6 +242,7 @@ def process_single_fund(fund: FundConfig, time_str: str) -> FundResult:
             decision=final_decision,
             reasoning=strategy_result.reasoning,
             estimate_change=realtime_change,
+            estimate_source=estimate_source,
             previous_change=previous_change,
             recent_5_changes=recent_5_changes,
             recent_5_estimates=recent_5_estimates,

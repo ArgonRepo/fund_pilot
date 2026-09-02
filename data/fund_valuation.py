@@ -42,6 +42,11 @@ class FundValuation:
     estimate_change: float   # 预估涨跌幅 (%)
     estimate_time: datetime  # 估值时间（估算交易日）
     is_stale: bool = False   # 数据是否失效（估算交易日非今日）
+    # 估值口径（邮件中据此标注可靠性）:
+    #   eastmoney         官方估值表（东财 GetFundGZList，2026-07 起已下线）
+    #   etf_proxy         ETF 代理：底层 ETF 实时价折算，基本准确
+    #   holdings_weighted 持仓推算：前十大重仓×实时行情加权，季报滞后+未披露按0，可能不准
+    source: str = "eastmoney"
 
 
 # ============================================================
@@ -197,6 +202,18 @@ def _etf_market_prefix(etf_code: str) -> str:
     return "sh" if head in ("5", "6", "9") else "sz"
 
 
+def _fetch_last_nav(fund_code: str) -> Optional[float]:
+    """基金最新确认净值（用于把 ETF/持仓推算的涨跌缩放到基金净值口径）"""
+    try:
+        from data.fund_history import get_fund_history
+        history = get_fund_history(fund_code, days=5)
+        if history:
+            return history[0][1]
+    except Exception as e:
+        logger.warning(f"代理估值：获取基金 {fund_code} 最新净值失败: {e}")
+    return None
+
+
 def _fetch_etf_realtime_change(etf_code: str) -> Optional[tuple[float, str]]:
     """
     获取底层 ETF 实时涨跌幅（%）——东财估值引擎宕机时的代理数据源。
@@ -271,15 +288,7 @@ def _fetch_etf_proxy_valuation(fund_code: str, etf_code: str) -> Optional[FundVa
     etf_change, src = change
 
     # 基金最新确认净值（用于把 ETF 涨跌缩放到基金净值口径）
-    last_nav = None
-    try:
-        from data.fund_history import get_fund_history
-        history = get_fund_history(fund_code, days=5)
-        if history:
-            last_nav = history[0][1]
-    except Exception as e:
-        logger.warning(f"代理估值：获取基金 {fund_code} 最新净值失败: {e}")
-
+    last_nav = _fetch_last_nav(fund_code)
     if not last_nav or last_nav <= 0:
         logger.warning(f"代理估值：基金 {fund_code} 最新净值缺失，无法缩放，回退失败")
         request_stats.record_failure()
@@ -299,6 +308,50 @@ def _fetch_etf_proxy_valuation(fund_code: str, etf_code: str) -> Optional[FundVa
         estimate_change=etf_change,
         estimate_time=datetime.now(),
         is_stale=False,
+        source="etf_proxy",
+    )
+
+
+def _fetch_holdings_weighted_valuation(fund_code: str, underlying_etf: Optional[str] = None) -> Optional[FundValuation]:
+    """
+    持仓加权推算估值（第三层回退）：前十大重仓股实时行情按占净值比例加权。
+
+    适用于无底层 ETF 的混合/股票型基金（与养基宝等工具的推算原理一致）。
+    局限：季报持仓滞后（最长约 4 个月）、未披露部分按 0 计，可能不准，仅供盘中参考。
+    债基等债券持仓无股票行情时自动返回 None（交由上层「前日净值」口径兜底）。
+
+    Returns:
+        FundValuation 或 None
+    """
+    from data.holdings import fetch_holdings_weighted_change
+
+    result = fetch_holdings_weighted_change(fund_code, underlying_etf)
+    if result is None:
+        request_stats.record_failure()
+        return None
+    weighted_change, covered = result
+
+    last_nav = _fetch_last_nav(fund_code)
+    if not last_nav or last_nav <= 0:
+        logger.warning(f"持仓推算：基金 {fund_code} 最新净值缺失，无法缩放，回退失败")
+        request_stats.record_failure()
+        return None
+
+    estimate_nav = last_nav * (1 + weighted_change / 100.0)
+    request_stats.record_success()
+    logger.info(
+        f"持仓推算估值: 基金 {fund_code} {weighted_change:+.2f}% "
+        f"预估净值={estimate_nav:.4f} 基准净值={last_nav:.4f} [覆盖 {covered:.1f}%·持仓推算]"
+    )
+    return FundValuation(
+        fund_code=fund_code,
+        fund_name="",
+        nav=last_nav,
+        estimate_nav=estimate_nav,
+        estimate_change=weighted_change,
+        estimate_time=datetime.now(),
+        is_stale=False,
+        source="holdings_weighted",
     )
 
 
@@ -306,8 +359,11 @@ def fetch_fund_valuation(fund_code: str, underlying_etf: Optional[str] = None) -
     """
     获取基金实时估值（从东方财富全量估值表查询单只基金）
 
-    主路径：东财估值表。失败（估值引擎宕机 / 该基金不在表内）时，若该基金配置了
-    underlying_etf，则自动回退到「底层 ETF 实时涨跌」代理估值（见 _fetch_etf_proxy_valuation）。
+    主路径：东财估值表（2026-07 起引擎已下线）。失败时回退链：
+      1. ETF 代理（配了 underlying_etf 的联接基金；底层 ETF 实时价折算，基本准确）
+      2. 持仓加权推算（前十大重仓×实时行情加权；季报滞后+未披露按0，可能不准）
+    返回的 FundValuation.source 标明口径，邮件中据此标注可靠性。
+    两层回退都失败时返回 None（上层以「前日净值」口径兜底展示）。
 
     Args:
         fund_code: 基金代码
@@ -320,22 +376,28 @@ def fetch_fund_valuation(fund_code: str, underlying_etf: Optional[str] = None) -
 
     result = _fetch_estimate_table()
     if result is None:
-        # 估值引擎整体不可用 → 尝试 ETF 代理回退（仅对配了 underlying_etf 的基金）
+        # 估值引擎整体不可用 → 回退链：ETF 代理（联接基金，基本准确）→ 持仓加权推算（混合/股票型，可能不准）
         if underlying_etf:
             proxy = _fetch_etf_proxy_valuation(fund_code, underlying_etf)
             if proxy:
                 return proxy
+        weighted = _fetch_holdings_weighted_valuation(fund_code, underlying_etf)
+        if weighted:
+            return weighted
         request_stats.record_failure()
         return None
 
     table, gxrq = result
     row = table.get(fund_code)
     if not row:
-        # 估值表正常但该基金不在表内 → 尝试 ETF 代理回退
+        # 估值表正常但该基金不在表内 → 同样走回退链
         if underlying_etf:
             proxy = _fetch_etf_proxy_valuation(fund_code, underlying_etf)
             if proxy:
                 return proxy
+        weighted = _fetch_holdings_weighted_valuation(fund_code, underlying_etf)
+        if weighted:
+            return weighted
         logger.warning(f"基金 {fund_code} 不在估值表中（可能为 QDII/未披露估值/已下线）")
         request_stats.record_failure()
         return None

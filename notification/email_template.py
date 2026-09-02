@@ -40,6 +40,8 @@ class FundReport:
     nq_change_pct: Optional[float] = None          # 期货涨跌幅
     nq_data_source: Optional[str] = None           # 数据来源
     nq_futures_symbol: Optional[str] = None        # 期货代码 (NQ=F / ES=F)
+    # 估值口径: eastmoney=官方表 / etf_proxy=ETF代理(基本准确) / holdings_weighted=持仓推算(可能不准) / last_nav=前日净值
+    estimate_source: Optional[str] = None
     # 其他
     previous_change: Optional[float] = None        # 昨日估值涨跌幅
     recent_5_changes: list[tuple[str, float]] = field(default_factory=list) # 过去5交易日涨跌幅
@@ -89,6 +91,28 @@ def _get_change_color(change: Optional[float]) -> str:
     elif change < 0:
         return "#27ae60"
     return "#2c3e50"
+
+
+# 估值口径徽标：官方估值引擎下线期间，标注盘中估值的来源与可靠性
+# ETF代理=底层ETF实时价折算（基本准确）；持仓推算=前十大重仓加权估算（可能不准）；前日净值=无盘中数据
+_SOURCE_BADGES = {
+    "etf_proxy": ("ETF代理", "#E3F2FD", "#1565C0"),
+    "holdings_weighted": ("持仓推算", "#FFF3E0", "#E65100"),
+    "last_nav": ("前日净值", "#EEEEEE", "#616161"),
+}
+
+
+def _get_source_badge(source: Optional[str]) -> str:
+    """估值口径徽标 HTML（官方估值 eastmoney 返回空串，不额外标注）"""
+    if not source or source == "eastmoney":
+        return ""
+    text, bg, fg = _SOURCE_BADGES.get(source, ("", "", ""))
+    if not text:
+        return ""
+    return (
+        f'<span style="font-size:10px;background:{bg};color:{fg};'
+        f'padding:1px 4px;border-radius:3px;margin-left:4px;white-space:nowrap;">{text}</span>'
+    )
 
 
 def _format_multiplier(multiplier: float | None) -> str:
@@ -503,6 +527,10 @@ COMBINED_EMAIL_TEMPLATE = """<!DOCTYPE html>
                     <span class="glossary-term">置信度</span>
                     <span class="glossary-def">策略对该建议的确定程度。越高代表指标信号越明确，熔断场景下会显著降低。</span>
                 </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">估值口径</span>
+                    <span class="glossary-def">官方盘中估值暂不可用期间：ETF代理=按底层ETF实时价折算（基本准确）；持仓推算=按前十大重仓股加权估算（季报滞后、未披露部分按0计，可能不准，仅供参考）；前日净值=无盘中数据时展示上一确认日净值。</span>
+                </div>
             </div>
         </div>
         
@@ -643,10 +671,10 @@ def generate_combined_email_html(
                 display_change = None
                 display_label = "失败"
         else:
-            # 实时估值无降级逻辑，无估值则失败
+            # 估值降级链：官方/ETF代理/持仓推算 → 前日净值（徽标标注口径）
             if report.estimate_change is not None:
                 display_change = report.estimate_change
-                display_label = _format_change(display_change)
+                display_label = _format_change(display_change) + _get_source_badge(report.estimate_source)
             else:
                 display_change = None
                 display_label = "失败"
@@ -731,7 +759,7 @@ def generate_combined_email_html(
         else:
             if report.estimate_change is not None:
                 card_change = report.estimate_change
-                card_label = _format_change(card_change)
+                card_label = _format_change(card_change) + _get_source_badge(report.estimate_source)
             else:
                 card_change = None
                 card_label = "失败"
